@@ -40,9 +40,12 @@ const Index = () => {
   const [input, setInput] = useState("");
   const [count, setCount] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const [bootLines, setBootLines] = useState<string[]>([]);
   const mutedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bootScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -54,12 +57,46 @@ const Index = () => {
   }, [lines]);
 
   useEffect(() => {
+    bootScrollRef.current?.scrollTo({ top: bootScrollRef.current.scrollHeight });
+  }, [bootLines]);
+
+  // Boot sequence
+  useEffect(() => {
+    const steps = [
+      "FART PRINTER BIOS v0.420",
+      "(c) 1987 Methane Industries",
+      "",
+      "Detecting colon..................... OK",
+      "Loading flatulence drivers.......... OK",
+      "Calibrating cheek sensors........... OK",
+      "Mounting /dev/butt.................. OK",
+      "Pressurizing methane chambers....... OK",
+      "Initializing GAS-DOS kernel......... OK",
+      "",
+      "READY.",
+      "Launching terminal...",
+    ];
+    let i = 0;
+    const id = setInterval(() => {
+      setBootLines((prev) => [...prev, steps[i]]);
+      i++;
+      if (i >= steps.length) {
+        clearInterval(id);
+        setTimeout(() => setBooting(false), 600);
+      }
+    }, 220);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (booting) return;
     const i = setInterval(() => {
       rip();
     }, 2200);
     return () => clearInterval(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [booting]);
+
 
   const getCtx = () => {
     if (!audioCtxRef.current) {
