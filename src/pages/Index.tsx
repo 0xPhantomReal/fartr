@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import FartVisualizer from "@/components/FartVisualizer";
 
 const FARTS = [
   "Pffffffrrrrrtttt!",
