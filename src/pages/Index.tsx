@@ -214,6 +214,34 @@ const Index = () => {
           border: "1px solid hsl(var(--terminal-dim) / 0.5)",
         }}
       >
+        {booting && (
+          <div
+            ref={bootScrollRef}
+            className="absolute inset-0 z-20 overflow-y-auto px-4 py-6 text-base sm:text-lg leading-snug whitespace-pre-wrap"
+            style={{
+              color: "hsl(var(--terminal-fg))",
+              background:
+                "radial-gradient(ellipse at center, hsl(var(--terminal-bg)) 0%, hsl(120 40% 2%) 100%)",
+            }}
+          >
+            <pre className="terminal-glow text-xs sm:text-sm mb-4 leading-tight">{`
+ ███████╗ █████╗ ██████╗ ████████╗
+ ██╔════╝██╔══██╗██╔══██╗╚══██╔══╝
+ █████╗  ███████║██████╔╝   ██║
+ ██╔══╝  ██╔══██║██╔══██╗   ██║
+ ██║     ██║  ██║██║  ██║   ██║
+ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+   P  R  I  N  T  E  R
+`}</pre>
+            {bootLines.map((l, i) => (
+              <div key={i} className="terminal-glow">
+                {l || "\u00A0"}
+              </div>
+            ))}
+            <span className="cursor-blink terminal-glow">█</span>
+          </div>
+        )}
+
         {/* Title bar */}
         <div
           className="flex items-center justify-between px-4 py-2 text-sm border-b"
