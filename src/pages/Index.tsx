@@ -39,8 +39,15 @@ const Index = () => {
   ]);
   const [input, setInput] = useState("");
   const [count, setCount] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -54,9 +61,71 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getCtx = () => {
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (Ctx) audioCtxRef.current = new Ctx();
+    }
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  const playFartSound = () => {
+    if (mutedRef.current) return;
+    const ctx = getCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const duration = 0.18 + Math.random() * 0.55;
+
+    // Noise buffer for the "brap" texture
+    const bufferSize = Math.floor(ctx.sampleRate * duration);
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      // Square-ish wobble + noise => flappy sound
+      const wobble = Math.sign(Math.sin(i * (0.04 + Math.random() * 0.05)));
+      data[i] = (Math.random() * 2 - 1) * 0.6 + wobble * 0.4;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    noise.playbackRate.value = 0.5 + Math.random() * 0.8;
+
+    // Lowpass to make it muffled/buttlike
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(400 + Math.random() * 600, now);
+    lp.frequency.exponentialRampToValueAtTime(120, now + duration);
+    lp.Q.value = 6;
+
+    // Bass oscillator for the "thump"
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    const baseFreq = 70 + Math.random() * 90;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(40, now + duration);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    noise.connect(lp);
+    lp.connect(gain);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    osc.start(now);
+    noise.stop(now + duration);
+    osc.stop(now + duration);
+  };
+
   const rip = (label?: string) => {
     const fart = FARTS[Math.floor(Math.random() * FARTS.length)];
     setCount((c) => c + 1);
+    playFartSound();
     setLines((prev) => [
       ...prev,
       label ? `> ${label}` : "> [auto]",
@@ -72,10 +141,18 @@ const Index = () => {
     if (cmd === "clear" || cmd === "cls") {
       setLines([""]);
     } else if (cmd === "help") {
-      setLines((p) => [...p, "> help", "commands: fart, rip, brap, clear, help, count", ""]);
+      setLines((p) => [...p, "> help", "commands: fart, rip, brap, clear, help, count, mute, unmute", ""]);
     } else if (cmd === "count") {
       setLines((p) => [...p, "> count", `Total emissions: ${count}`, ""]);
+    } else if (cmd === "mute") {
+      setMuted(true);
+      setLines((p) => [...p, "> mute", "Audio muted. The farts continue silently.", ""]);
+    } else if (cmd === "unmute") {
+      setMuted(false);
+      getCtx();
+      setLines((p) => [...p, "> unmute", "Audio unmuted. Brace yourself.", ""]);
     } else {
+      getCtx();
       rip(cmd || "fart");
     }
     setInput("");
@@ -85,7 +162,10 @@ const Index = () => {
     <main
       className="min-h-screen w-full flex items-center justify-center p-4 sm:p-8 terminal-font"
       style={{ background: "hsl(var(--terminal-bg))" }}
-      onClick={() => inputRef.current?.focus()}
+      onClick={() => {
+        getCtx();
+        inputRef.current?.focus();
+      }}
     >
       <div
         className="relative w-full max-w-4xl h-[80vh] rounded-lg overflow-hidden scanlines crt-flicker shadow-2xl"
@@ -107,7 +187,22 @@ const Index = () => {
           }}
         >
           <span className="terminal-glow">FART-TERMINAL ~ /dev/butt</span>
-          <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                getCtx();
+                setMuted((m) => !m);
+                inputRef.current?.focus();
+              }}
+              className="terminal-glow opacity-80 hover:opacity-100 transition-opacity"
+              aria-label={muted ? "unmute audio" : "mute audio"}
+            >
+              [{muted ? "SOUND: OFF" : "SOUND: ON"}]
+            </button>
+            <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
+          </div>
         </div>
 
         {/* Output */}
