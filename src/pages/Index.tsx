@@ -107,7 +107,7 @@ const Index = () => {
           }}
         >
           <span className="terminal-glow">FART-TERMINAL ~ /dev/butt</span>
-          <span className="terminal-glow opacity-70">emissions: {count}</span>
+          <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
         </div>
 
         {/* Output */}
@@ -126,7 +126,7 @@ const Index = () => {
         {/* Prompt */}
         <form
           onSubmit={handleSubmit}
-          className="absolute bottom-0 left-0 right-0 flex items-center gap-2 px-4 py-3 border-t text-lg sm:text-xl"
+          className="absolute bottom-8 left-0 right-0 flex items-center gap-2 px-4 py-3 border-t text-lg sm:text-xl"
           style={{
             color: "hsl(var(--terminal-fg))",
             borderColor: "hsl(var(--terminal-dim) / 0.4)",
@@ -146,6 +146,30 @@ const Index = () => {
           />
           <span className="cursor-blink terminal-glow">█</span>
         </form>
+
+        {/* Social Links */}
+        <div
+          className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-4 px-4 py-2 text-sm"
+          style={{
+            color: "hsl(var(--terminal-dim))",
+            background: "hsl(120 50% 4%)",
+            borderTop: "1px solid hsl(var(--terminal-dim) / 0.3)",
+          }}
+        >
+          <a
+            href="https://x.com/fartrcoin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="terminal-glow hover:opacity-80 transition-opacity"
+            style={{ color: "hsl(var(--terminal-fg))" }}
+          >
+            [X/Twitter]
+          </a>
+          <span style={{ color: "hsl(var(--terminal-dim))" }}>|</span>
+          <span className="terminal-glow" style={{ color: "hsl(var(--terminal-dim))" }}>
+            CA: Pending…
+          </span>
+        </div>
       </div>
     </main>
   );
