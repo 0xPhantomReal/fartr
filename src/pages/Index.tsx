@@ -48,6 +48,7 @@ const Index = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bootScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   useEffect(() => {
     mutedRef.current = muted;
