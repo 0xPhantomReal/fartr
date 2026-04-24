@@ -63,7 +63,7 @@ const Index = () => {
   // Boot sequence
   useEffect(() => {
     const steps = [
-      "FART PRINTER BIOS v0.420",
+      "FARTR BIOS v0.420",
       "(c) 1987 Methane Industries",
       "",
       "Detecting colon..................... OK",
