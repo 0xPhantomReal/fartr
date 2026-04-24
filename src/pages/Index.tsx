@@ -184,7 +184,22 @@ const Index = () => {
           }}
         >
           <span className="terminal-glow">FART-TERMINAL ~ /dev/butt</span>
-          <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                getCtx();
+                setMuted((m) => !m);
+                inputRef.current?.focus();
+              }}
+              className="terminal-glow opacity-80 hover:opacity-100 transition-opacity"
+              aria-label={muted ? "unmute audio" : "mute audio"}
+            >
+              [{muted ? "SOUND: OFF" : "SOUND: ON"}]
+            </button>
+            <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
+          </div>
         </div>
 
         {/* Output */}
