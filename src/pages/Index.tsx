@@ -162,7 +162,10 @@ const Index = () => {
     <main
       className="min-h-screen w-full flex items-center justify-center p-4 sm:p-8 terminal-font"
       style={{ background: "hsl(var(--terminal-bg))" }}
-      onClick={() => inputRef.current?.focus()}
+      onClick={() => {
+        getCtx();
+        inputRef.current?.focus();
+      }}
     >
       <div
         className="relative w-full max-w-4xl h-[80vh] rounded-lg overflow-hidden scanlines crt-flicker shadow-2xl"
