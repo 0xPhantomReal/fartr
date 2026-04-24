@@ -39,8 +39,15 @@ const Index = () => {
   ]);
   const [input, setInput] = useState("");
   const [count, setCount] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -54,9 +61,71 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getCtx = () => {
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (Ctx) audioCtxRef.current = new Ctx();
+    }
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  const playFartSound = () => {
+    if (mutedRef.current) return;
+    const ctx = getCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const duration = 0.18 + Math.random() * 0.55;
+
+    // Noise buffer for the "brap" texture
+    const bufferSize = Math.floor(ctx.sampleRate * duration);
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      // Square-ish wobble + noise => flappy sound
+      const wobble = Math.sign(Math.sin(i * (0.04 + Math.random() * 0.05)));
+      data[i] = (Math.random() * 2 - 1) * 0.6 + wobble * 0.4;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    noise.playbackRate.value = 0.5 + Math.random() * 0.8;
+
+    // Lowpass to make it muffled/buttlike
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(400 + Math.random() * 600, now);
+    lp.frequency.exponentialRampToValueAtTime(120, now + duration);
+    lp.Q.value = 6;
+
+    // Bass oscillator for the "thump"
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    const baseFreq = 70 + Math.random() * 90;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(40, now + duration);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    noise.connect(lp);
+    lp.connect(gain);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    osc.start(now);
+    noise.stop(now + duration);
+    osc.stop(now + duration);
+  };
+
   const rip = (label?: string) => {
     const fart = FARTS[Math.floor(Math.random() * FARTS.length)];
     setCount((c) => c + 1);
+    playFartSound();
     setLines((prev) => [
       ...prev,
       label ? `> ${label}` : "> [auto]",
