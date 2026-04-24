@@ -113,6 +113,7 @@ const Index = () => {
         analyser.smoothingTimeConstant = 0.75;
         analyser.connect(ctx.destination);
         analyserRef.current = analyser;
+        setAnalyserNode(analyser);
       }
     }
     if (audioCtxRef.current?.state === "suspended") {
