@@ -107,7 +107,7 @@ const Index = () => {
           }}
         >
           <span className="terminal-glow">FART-TERMINAL ~ /dev/butt</span>
-          <span className="terminal-glow opacity-70">emissions: {count}</span>
+          <span className="terminal-glow opacity-70">CA: Pending… | emissions: {count}</span>
         </div>
 
         {/* Output */}
