@@ -283,7 +283,7 @@ const Index = () => {
         {/* Output */}
         <div
           ref={scrollRef}
-          className="h-[calc(100%-7rem)] overflow-y-auto px-4 py-3 text-lg sm:text-xl leading-snug whitespace-pre-wrap relative z-[1]"
+          className="h-[calc(100%-10rem)] overflow-y-auto px-4 py-3 text-lg sm:text-xl leading-snug whitespace-pre-wrap relative z-[1]"
           style={{ color: "hsl(var(--terminal-fg))" }}
         >
           {lines.map((l, i) => (
@@ -291,6 +291,19 @@ const Index = () => {
               {l || "\u00A0"}
             </div>
           ))}
+        </div>
+
+        {/* Visualizer */}
+        <div
+          className="absolute left-0 right-0 px-3 py-1 border-t border-b"
+          style={{
+            bottom: "5.5rem",
+            height: "3rem",
+            borderColor: "hsl(var(--terminal-dim) / 0.4)",
+            background: "hsl(120 50% 4%)",
+          }}
+        >
+          <FartVisualizer analyser={analyserNode} active={!muted} />
         </div>
 
         {/* Prompt */}
