@@ -141,10 +141,18 @@ const Index = () => {
     if (cmd === "clear" || cmd === "cls") {
       setLines([""]);
     } else if (cmd === "help") {
-      setLines((p) => [...p, "> help", "commands: fart, rip, brap, clear, help, count", ""]);
+      setLines((p) => [...p, "> help", "commands: fart, rip, brap, clear, help, count, mute, unmute", ""]);
     } else if (cmd === "count") {
       setLines((p) => [...p, "> count", `Total emissions: ${count}`, ""]);
+    } else if (cmd === "mute") {
+      setMuted(true);
+      setLines((p) => [...p, "> mute", "Audio muted. The farts continue silently.", ""]);
+    } else if (cmd === "unmute") {
+      setMuted(false);
+      getCtx();
+      setLines((p) => [...p, "> unmute", "Audio unmuted. Brace yourself.", ""]);
     } else {
+      getCtx();
       rip(cmd || "fart");
     }
     setInput("");
