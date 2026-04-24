@@ -1,6 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .terminal-font { font-family: 'VT323', 'Share Tech Mono', monospace; }
+
+  .scanlines::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      hsl(var(--terminal-glow) / 0.06) 0px,
+      hsl(var(--terminal-glow) / 0.06) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .crt-flicker { animation: flicker 3s infinite; }
+  .terminal-glow { text-shadow: 0 0 4px hsl(var(--terminal-glow) / 0.9), 0 0 12px hsl(var(--terminal-glow) / 0.5); }
+  .cursor-blink { animation: blink 1s steps(1) infinite; }
+}
+
+@keyframes flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96% { opacity: 0.85; }
+  97% { opacity: 1; }
+  98% { opacity: 0.92; }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
 
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
@@ -37,6 +73,11 @@ All colors MUST be HSL.
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+
+    --terminal-bg: 120 30% 4%;
+    --terminal-fg: 120 100% 70%;
+    --terminal-glow: 120 100% 55%;
+    --terminal-dim: 120 60% 35%;
 
     --sidebar-background: 0 0% 98%;
 
