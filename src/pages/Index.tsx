@@ -98,10 +98,20 @@ const Index = () => {
   }, [booting]);
 
 
+  const analyserRef = useRef<AnalyserNode | null>(null);
+
   const getCtx = () => {
     if (!audioCtxRef.current) {
       const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      if (Ctx) audioCtxRef.current = new Ctx();
+      if (Ctx) {
+        const ctx = new Ctx();
+        audioCtxRef.current = ctx;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.75;
+        analyser.connect(ctx.destination);
+        analyserRef.current = analyser;
+      }
     }
     if (audioCtxRef.current?.state === "suspended") {
       audioCtxRef.current.resume();
@@ -113,6 +123,7 @@ const Index = () => {
     if (mutedRef.current) return;
     const ctx = getCtx();
     if (!ctx) return;
+    const dest = analyserRef.current ?? ctx.destination;
     const now = ctx.currentTime;
     const duration = 0.18 + Math.random() * 0.55;
 
@@ -121,7 +132,6 @@ const Index = () => {
     const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = noiseBuffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      // Square-ish wobble + noise => flappy sound
       const wobble = Math.sign(Math.sin(i * (0.04 + Math.random() * 0.05)));
       data[i] = (Math.random() * 2 - 1) * 0.6 + wobble * 0.4;
     }
@@ -129,14 +139,12 @@ const Index = () => {
     noise.buffer = noiseBuffer;
     noise.playbackRate.value = 0.5 + Math.random() * 0.8;
 
-    // Lowpass to make it muffled/buttlike
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.setValueAtTime(400 + Math.random() * 600, now);
     lp.frequency.exponentialRampToValueAtTime(120, now + duration);
     lp.Q.value = 6;
 
-    // Bass oscillator for the "thump"
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
     const baseFreq = 70 + Math.random() * 90;
@@ -151,7 +159,7 @@ const Index = () => {
     noise.connect(lp);
     lp.connect(gain);
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     noise.start(now);
     osc.start(now);
