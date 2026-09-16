@@ -105,6 +105,7 @@ function Index() {
   const [typing, setTyping] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imgOk, setImgOk] = useState(true);
+  const [imgSrc, setImgSrc] = useState("/bike-tyson.png"); // prefer a transparent PNG; on error fall back to the .jpg, then the emoji
   const [price, setPrice] = useState(0.000428);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -212,17 +213,23 @@ function Index() {
           {/* hero / character */}
           <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
             <div className="wobble relative mb-4 w-full max-w-[340px]">
-              <div className="aspect-square w-full overflow-hidden rounded-3xl" style={{ background: `linear-gradient(160deg, ${C.panel2}, ${C.panel})`, border: `2px solid ${C.gold}55`, ...glow(C.gold, 14) }}>
+              <div className="grid aspect-square w-full place-items-center rounded-3xl p-3" style={{ background: `radial-gradient(circle at 50% 42%, ${C.gold}22, transparent 66%)` }}>
                 {imgOk ? (
-                  <img src="/bike-tyson.jpg" alt="Bike Tyson" className="h-full w-full object-cover" onError={() => setImgOk(false)} />
+                  <img
+                    src={imgSrc}
+                    alt="Bike Tyson"
+                    className="h-full w-full object-contain"
+                    style={{ filter: `drop-shadow(0 10px 22px ${C.red}44) drop-shadow(0 0 34px ${C.gold}55)` }}
+                    onError={() => { if (imgSrc.endsWith(".png")) setImgSrc("/bike-tyson.jpg"); else setImgOk(false); }}
+                  />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2">
                     <div className="text-[92px] leading-none">🚴‍♂️🥊</div>
-                    <div className="px-4 text-xs" style={{ color: C.muted }}>drop <code style={{ color: C.gold }}>bike-tyson.png</code> in <code>/public</code> and I show up here</div>
+                    <div className="px-4 text-xs" style={{ color: C.muted }}>drop a transparent <code style={{ color: C.gold }}>bike-tyson.png</code> in <code>/public</code></div>
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-black" style={{ background: C.red, color: "#fff", ...glow(C.red, 10) }}>👂 100% EAR-FREE GUARANTEE*</div>
+              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-black" style={{ background: C.red, color: "#fff", ...glow(C.red, 10) }}>👂 100% EAR-FREE GUARANTEE*</div>
             </div>
             <h1 className="text-4xl font-black leading-none sm:text-5xl" style={tglow(C.gold, 18)}>BIKE&nbsp;TYTHON</h1>
             <p className="mt-3 text-sm" style={{ color: C.muted }}>
