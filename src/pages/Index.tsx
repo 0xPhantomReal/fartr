@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bike, Skull, Copy, Check, Send, Twitter, Send as Tg, Flame, Rocket, Ear } from "lucide-react";
+import { Bike, Skull, Copy, Check, Send, Twitter, Send as Tg, Flame, Rocket, Ear, Volume2, VolumeX } from "lucide-react";
 
 /* ============================ palette (self-contained boxing-degen) ============================ */
 const C = {
@@ -111,15 +111,47 @@ function Index() {
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [msgs, typing]);
   useEffect(() => { const t = setInterval(() => setPrice((p) => Math.max(0.00001, p * (1 + (Math.random() - 0.35) * 0.06))), 1400); return () => clearInterval(t); }, []);
 
+  // ===== sound FX (Web Audio, no files) — bike bell on send, punch thud on reply =====
+  const [muted, setMuted] = useState(() => { try { return localStorage.getItem("bt_muted") === "1"; } catch { return false; } });
+  const audioRef = useRef<AudioContext | null>(null);
+  const actx = () => {
+    if (!audioRef.current) { try { audioRef.current = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch { return null; } }
+    const c = audioRef.current; if (c && c.state === "suspended") c.resume().catch(() => {}); return c;
+  };
+  const bell = () => {
+    if (muted) return; const c = actx(); if (!c) return; const t0 = c.currentTime;
+    const ding = (s: number, f: number) => [f, f * 2.76, f * 5.4].forEach((fr, i) => {
+      const o = c.createOscillator(), g = c.createGain(); o.type = "sine"; o.frequency.value = fr;
+      const a = 0.22 / (i + 1); g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(a, s + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, s + 0.5);
+      o.connect(g).connect(c.destination); o.start(s); o.stop(s + 0.55);
+    });
+    ding(t0, 1760); ding(t0 + 0.12, 1976); // ding-ding
+  };
+  const punch = () => {
+    if (muted) return; const c = actx(); if (!c) return; const t0 = c.currentTime;
+    const o = c.createOscillator(), g = c.createGain(); o.type = "sine";
+    o.frequency.setValueAtTime(190, t0); o.frequency.exponentialRampToValueAtTime(55, t0 + 0.13);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(0.5, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + 0.25);
+    const dur = 0.12, buf = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * dur)), c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const n = c.createBufferSource(); n.buffer = buf; const nf = c.createBiquadFilter(); nf.type = "lowpass"; nf.frequency.value = 1200;
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.35, t0); ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+    n.connect(nf).connect(ng).connect(c.destination); n.start(t0); n.stop(t0 + dur);
+  };
+  const toggleMute = () => setMuted((m) => { const v = !m; try { localStorage.setItem("bt_muted", v ? "1" : "0"); } catch {} return v; });
+
   const send = (t?: string) => {
     const text = (t ?? input).trim();
     if (!text) return;
+    bell();
     setMsgs((m) => [...m, { who: "you", text }]);
     setInput("");
     setTyping(true);
     setTimeout(() => {
       setMsgs((m) => [...m, { who: "bike", text: bikeSays(text) }]);
       setTyping(false);
+      punch();
     }, 650 + Math.random() * 700);
   };
   const copyCA = () => { navigator.clipboard?.writeText(CA).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); };
@@ -211,7 +243,12 @@ function Index() {
                 <div className="text-sm font-black">Bike Tython</div>
                 <div className="flex items-center gap-1 text-[11px]" style={{ color: C.green }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /> online · ferothiouth</div>
               </div>
-              <span className="ml-auto flex items-center gap-1 text-[11px]" style={{ color: C.muted }}><Skull className="h-3.5 w-3.5" /> AI agent (allegedly)</span>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="hidden items-center gap-1 text-[11px] sm:flex" style={{ color: C.muted }}><Skull className="h-3.5 w-3.5" /> AI agent (allegedly)</span>
+                <button onClick={toggleMute} title={muted ? "unmute" : "mute"} className="grid h-7 w-7 place-items-center rounded-lg transition-colors" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: muted ? C.muted : C.gold }}>
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
