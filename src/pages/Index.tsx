@@ -182,7 +182,7 @@ function Index() {
             <div className="wobble relative mb-4 w-full max-w-[340px]">
               <div className="aspect-square w-full overflow-hidden rounded-3xl" style={{ background: `linear-gradient(160deg, ${C.panel2}, ${C.panel})`, border: `2px solid ${C.gold}55`, ...glow(C.gold, 14) }}>
                 {imgOk ? (
-                  <img src="/bike-tyson.png" alt="Bike Tyson" className="h-full w-full object-cover" onError={() => setImgOk(false)} />
+                  <img src="/bike-tyson.jpg" alt="Bike Tyson" className="h-full w-full object-cover" onError={() => setImgOk(false)} />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2">
                     <div className="text-[92px] leading-none">🚴‍♂️🥊</div>
