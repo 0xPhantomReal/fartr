@@ -1,8 +1,11 @@
-# Gridiron Sim — live NFL data proxy
+# Gridiron Sim — live NFL data proxy (OPTIONAL)
 
-`worker.js` is a Cloudflare Worker that feeds live data to the simulator. The
-site works without it (curated offline slate); deploying it turns on the real
-weekly slate + real per-player usage.
+**You do not need this to use the site.** Out of the box the simulator already
+pulls the **real current-week slate from ESPN** (no key, no server) and runs it
+against a baked-in 32-team usage dataset. Every game simulates.
+
+`worker.js` is an **optional upgrade**: deploy it only if you want live
+*season-to-date* player usage from SportsDataIO instead of the season baseline.
 
 ## Why a proxy is needed
 SportsDataIO requires a secret key and sends **no CORS header**, so the browser

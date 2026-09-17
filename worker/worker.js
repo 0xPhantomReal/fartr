@@ -126,6 +126,26 @@ async function sdioSeasonWeek(key) {
   let week = 1; try { week = num(await sdioGet("scores/json/CurrentWeek", key)) || 1; } catch {}
   return { season, week };
 }
+// team defense + pace multipliers, relative to league average, clamped (real matchup logic)
+async function sdioDefense(key, year) {
+  try {
+    const rows = await sdioGet(`scores/json/TeamSeasonStats/${year}REG`, key);
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const dg = (t, f) => per(t[f], num(t.Games) || 17);
+    const avg = (f) => rows.reduce((s, t) => s + dg(t, f), 0) / rows.length;
+    const aPass = avg("OpponentPassingYards"), aRush = avg("OpponentRushingYards"), aPlays = avg("OffensivePlays");
+    const aYPA = ratio(rows.reduce((s, t) => s + num(t.OpponentPassingYards), 0), rows.reduce((s, t) => s + num(t.OpponentPassingAttempts), 0));
+    const map = {};
+    for (const t of rows) {
+      const ypa = ratio(t.OpponentPassingYards, t.OpponentPassingAttempts);
+      map[t.Team] = {
+        pace: r2(clamp(dg(t, "OffensivePlays") / aPlays, 0.9, 1.1)),
+        def: { pass: r2(clamp(dg(t, "OpponentPassingYards") / aPass, 0.85, 1.15)), run: r2(clamp(dg(t, "OpponentRushingYards") / aRush, 0.85, 1.15)), cb: r2(clamp(ypa / aYPA, 0.9, 1.1)) },
+      };
+    }
+    return map;
+  } catch { return null; }
+}
 async function sdioPlayers(key, season, week) {
   // free plan only serves authorized seasons; try current then prior, first non-empty wins
   const tries = week <= 4 ? [season - 1, season, season - 2] : [season, season - 1];
@@ -139,7 +159,10 @@ async function sdioPlayers(key, season, week) {
           car: s.RushingAttempts, ruYd: s.RushingYards, ruTD: s.RushingTouchdowns,
           tgt: null, rec: s.Receptions, reYd: s.ReceivingYards, reTD: s.ReceivingTouchdowns,
         }));
-        return { teams: packTeams(aggs), statsSeason: y };
+        const teams = packTeams(aggs);
+        const dmap = await sdioDefense(key, y);
+        if (dmap) for (const abbr in teams) if (dmap[abbr]) { teams[abbr].pace = dmap[abbr].pace; teams[abbr].def = dmap[abbr].def; }
+        return { teams, statsSeason: y };
       }
     } catch { /* try next season */ }
   }
