@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /* =========================================================================================
    GRIDIRON SIM — a real Monte-Carlo NFL game simulator.
@@ -6,8 +6,16 @@ import { useState } from "react";
    efficiency (offense vs the opponent's pass/run defense) → player-vs-player (WR1 vs the
    opponent's top CB) → home-field → real distributions (Gaussian yards, Poisson TDs, Binomial
    catches) → PPR fantasy points. Averaged over N sims. Not random noise — model expectations
-   that converge as N grows. Dataset = curated recent-usage real players (not a live feed).
+   that converge as N grows.
+
+   DATA: pulls the live week's slate + real per-player usage from the proxy Worker
+   (SportsDataIO first, free nflverse feeds as backup). If no proxy is configured or it's
+   unreachable, it falls back to the curated slate below so the sim always works.
+   Set the Worker URL once via the ⚙ control (saved in your browser) or DEFAULT_PROXY.
    ========================================================================================= */
+
+// Paste your deployed Cloudflare Worker URL here (or set it at runtime via the ⚙ control).
+const DEFAULT_PROXY = "";
 
 type Pos = "QB" | "RB" | "WR" | "TE";
 type Player = {
@@ -21,8 +29,9 @@ type Player = {
 };
 type Team = { abbr: string; name: string; pace: number; def: { pass: number; run: number; cb: number }; players: Player[] };
 
-/* per-game BASE lines vs an average defense at a neutral site (grounded in recent real usage). */
-const T: Record<string, Team> = {
+/* per-game BASE lines vs an average defense at a neutral site (grounded in recent real usage).
+   Used as the offline fallback when the live proxy isn't configured/reachable. */
+const CURATED_T: Record<string, Team> = {
   KC: { abbr: "KC", name: "Chiefs", pace: 1.0, def: { pass: 0.92, run: 1.02, cb: 0.95 }, players: [
     { name: "P. Mahomes", pos: "QB", pAtt: 35, cmp: 0.67, ypa: 7.2, pTD: 1.9, iNT: 0.6, rYd: 18, rTD: 0.2 },
     { name: "I. Pacheco", pos: "RB", car: 15, ypc: 4.3, ruTD: 0.5, tgt: 3, cr: 0.74, ypr: 6.5, recTD: 0.08 },
@@ -98,7 +107,8 @@ const T: Record<string, Team> = {
     { name: "J. Smith", pos: "TE", tgt: 5, cr: 0.72, ypr: 9, recTD: 0.2 } ] },
 };
 
-const GAMES = [
+type Game = { away: string; home: string; slot: string };
+const CURATED_GAMES: Game[] = [
   { away: "KC", home: "BUF", slot: "Sun · 4:25 PM" },
   { away: "PHI", home: "DAL", slot: "Sun · 8:20 PM" },
   { away: "SF", home: "LAR", slot: "Sun · 4:05 PM" },
@@ -106,6 +116,47 @@ const GAMES = [
   { away: "DET", home: "GB", slot: "Thu · 8:15 PM" },
   { away: "MIN", home: "MIA", slot: "Mon · 8:15 PM" },
 ];
+
+/* abbr → full name, so teams that only come from the live feed still render a name */
+const TEAM_NAMES: Record<string, string> = {
+  ARI: "Cardinals", ATL: "Falcons", BAL: "Ravens", BUF: "Bills", CAR: "Panthers", CHI: "Bears",
+  CIN: "Bengals", CLE: "Browns", DAL: "Cowboys", DEN: "Broncos", DET: "Lions", GB: "Packers",
+  HOU: "Texans", IND: "Colts", JAX: "Jaguars", KC: "Chiefs", LV: "Raiders", LAC: "Chargers",
+  LAR: "Rams", MIA: "Dolphins", MIN: "Vikings", NE: "Patriots", NO: "Saints", NYG: "Giants",
+  NYJ: "Jets", PHI: "Eagles", PIT: "Steelers", SF: "49ers", SEA: "Seahawks", TB: "Buccaneers",
+  TEN: "Titans", WAS: "Commanders", WSH: "Commanders", JAC: "Jaguars",
+};
+
+/* ---- live data layer: proxy Worker (SportsDataIO → nflverse) with curated fallback ---- */
+type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null };
+const CURATED: DataSet = { T: CURATED_T, games: CURATED_GAMES, source: "curated", week: null };
+
+async function fetchJSON(url: string, ms = 7000): Promise<any> {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ac.signal });
+    if (!r.ok) throw new Error(`${url} → ${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+
+async function loadLive(proxy: string): Promise<DataSet> {
+  const base = proxy.replace(/\/+$/, "");
+  const [pj, gj] = await Promise.all([fetchJSON(base + "/players"), fetchJSON(base + "/games")]);
+  const T: Record<string, Team> = {};
+  for (const abbr in (pj.teams || {})) {
+    const w = pj.teams[abbr];
+    if (!w || !Array.isArray(w.players) || !w.players.length) continue;
+    T[abbr] = { abbr, name: TEAM_NAMES[abbr] || abbr, pace: w.pace || 1, def: w.def || { pass: 1, run: 1, cb: 1 }, players: w.players };
+  }
+  const games: Game[] = (gj.games || [])
+    .filter((g: any) => g && T[g.away] && T[g.home])
+    .map((g: any) => ({ away: g.away, home: g.home, slot: g.slot || `Week ${gj.week ?? ""}` }));
+  if (Object.keys(T).length < 2 || !games.length) throw new Error("live feed returned nothing usable");
+  const src = pj.source === gj.source ? pj.source : `${gj.source}/${pj.source}`;
+  return { T, games, source: src, week: gj.week ?? null };
+}
 
 /* ---- seeded RNG + distributions ---- */
 const mul = (a: number) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -178,21 +229,47 @@ function statLine(p: PRes): string {
   return `${num(l.rec)}/${num(l.tgt, 0)} tgt, ${num(l.reYd, 0)} yd, ${num(l.reTD)} TD`;
 }
 
+const readProxy = () => { try { return localStorage.getItem("gs_proxy") || DEFAULT_PROXY; } catch { return DEFAULT_PROXY; } };
+
 function Index() {
   const [sel, setSel] = useState<number | null>(null);
   const [sims, setSims] = useState(2000);
   const [res, setRes] = useState<{ home: TRes; away: TRes; n: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [data, setData] = useState<DataSet>(CURATED);
+  const [loading, setLoading] = useState(false);
+  const [proxy, setProxy] = useState(readProxy);
+  const [showCfg, setShowCfg] = useState(false);
+  const [draft, setDraft] = useState(proxy);
+
+  useEffect(() => {
+    if (!proxy) { setData(CURATED); return; }
+    let live = true; setLoading(true);
+    loadLive(proxy)
+      .then((d) => { if (live) { setData(d); setSel(null); setRes(null); } })
+      .catch(() => { if (live) setData(CURATED); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [proxy]);
+
+  const TT = data.T;
+  const games = data.games;
+  const saveProxy = () => { const v = draft.trim(); try { v ? localStorage.setItem("gs_proxy", v) : localStorage.removeItem("gs_proxy"); } catch {} setProxy(v); setShowCfg(false); };
 
   const run = () => {
     if (sel == null) return;
-    const g = GAMES[sel]; const n = clamp(Math.round(sims) || 1, 100, 100000);
+    const g = games[sel]; const n = clamp(Math.round(sims) || 1, 100, 100000);
     setBusy(true); setRes(null);
     setTimeout(() => {
-      const out = simulate(T[g.home], T[g.away], n, (sel + 1) * 100003 + n);
+      const out = simulate(TT[g.home], TT[g.away], n, (sel + 1) * 100003 + n);
       setRes({ ...out, n }); setBusy(false);
     }, 20);
   };
+
+  const live = data.source !== "curated";
+  const srcLabel = data.source === "curated" ? "curated slate"
+    : data.source.includes("sportsdataio") ? "live · SportsDataIO" + (data.source.includes("nflverse") ? " + nflverse" : "")
+    : data.source.includes("nflverse") ? "live · nflverse (free)" : "live · " + data.source;
 
   const Team = ({ t }: { t: TRes }) => (
     <div style={box}>
@@ -224,35 +301,51 @@ function Index() {
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
           <div style={{ fontSize: 26 }}>🏈</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, letterSpacing: -0.5 }}>GRIDIRON&nbsp;SIM</h1>
-            <div style={{ fontSize: 12, color: C.mut }}>Monte-Carlo NFL game simulator · Week slate · PPR scoring</div>
+            <div style={{ fontSize: 12, color: C.mut }}>Monte-Carlo NFL game simulator · {data.week ? `Week ${data.week}` : "Week slate"} · PPR scoring</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span title={srcLabel} style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 20, border: `1px solid ${C.line}`, color: loading ? C.gold : live ? C.field : C.mut, background: "#0e1c15", whiteSpace: "nowrap" }}>
+              <span style={{ marginRight: 6 }}>●</span>{loading ? "loading…" : srcLabel}
+            </span>
+            <button onClick={() => { setDraft(proxy); setShowCfg((s) => !s); }} title="Data source" style={{ background: "none", border: `1px solid ${C.line}`, borderRadius: 8, color: C.mut, cursor: "pointer", padding: "5px 8px", fontSize: 13 }}>⚙</button>
           </div>
         </div>
 
+        {showCfg && (
+          <div style={{ ...box, padding: 14, margin: "12px 0", fontSize: 12, color: C.mut }}>
+            <div style={{ marginBottom: 8 }}>Live-data proxy URL (your Cloudflare Worker). Leave blank to use the offline curated slate.</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="https://your-worker.workers.dev" style={{ flex: 1, minWidth: 220, ...box, color: C.chalk, padding: "9px 10px", fontFamily: "ui-monospace,monospace", fontSize: 12 }} />
+              <button onClick={saveProxy} style={{ background: `linear-gradient(135deg,${C.field},#1e8f52)`, color: "#04140c", border: "none", borderRadius: 8, fontWeight: 800, padding: "9px 16px", cursor: "pointer" }}>Save</button>
+            </div>
+          </div>
+        )}
+
         {sel == null ? (
           <>
-            <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>This Week's Games — tap to simulate</div>
+            <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>{data.week ? `Week ${data.week} Games` : "This Week's Games"} — tap to simulate</div>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
-              {GAMES.map((g, i) => (
+              {games.map((g, i) => (
                 <button key={i} onClick={() => { setSel(i); setRes(null); }} style={{ ...box, cursor: "pointer", textAlign: "left", padding: "14px 16px", color: C.chalk, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: 17, fontWeight: 800 }}>{T[g.away].abbr} <span style={{ color: C.mut, fontWeight: 400 }}>@</span> {T[g.home].abbr}</div>
-                    <div style={{ fontSize: 11, color: C.mut }}>{T[g.away].name} at {T[g.home].name}</div>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>{TT[g.away].abbr} <span style={{ color: C.mut, fontWeight: 400 }}>@</span> {TT[g.home].abbr}</div>
+                    <div style={{ fontSize: 11, color: C.mut }}>{TT[g.away].name} at {TT[g.home].name}</div>
                   </div>
                   <div style={{ textAlign: "right", fontSize: 11, color: C.field }}>{g.slot}<div style={{ color: C.mut, marginTop: 2 }}>simulate ▸</div></div>
                 </button>
               ))}
             </div>
             <p style={{ marginTop: 22, fontSize: 11, color: C.mut, lineHeight: 1.6 }}>
-              Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Numbers converge as N grows — not random. Player pool = curated recent real usage (not a live feed).
+              Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Numbers converge as N grows — not random. {live ? `Player usage + this week's slate are pulled live (${srcLabel.replace("live · ", "")}).` : "Running the offline curated player pool — add a data proxy via ⚙ for the live weekly slate."}
             </p>
           </>
         ) : (
           <>
             <button onClick={() => { setSel(null); setRes(null); }} style={{ background: "none", border: "none", color: C.mut, cursor: "pointer", fontSize: 13, margin: "14px 0", padding: 0 }}>‹ all games</button>
             <div style={{ ...box, padding: 16, marginBottom: 16, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, justifyContent: "space-between" }}>
-              <div style={{ fontSize: 22, fontWeight: 900 }}>{T[GAMES[sel].away].abbr} @ {T[GAMES[sel].home].abbr} <span style={{ color: C.mut, fontSize: 13, fontWeight: 400 }}>· {GAMES[sel].slot}</span></div>
+              <div style={{ fontSize: 22, fontWeight: 900 }}>{TT[games[sel].away].abbr} @ {TT[games[sel].home].abbr} <span style={{ color: C.mut, fontSize: 13, fontWeight: 400 }}>· {games[sel].slot}</span></div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <label style={{ fontSize: 12, color: C.mut }}># sims</label>
                 <input type="number" value={sims} min={100} max={100000} onChange={(e) => setSims(Number(e.target.value))} style={{ width: 100, ...box, color: C.chalk, padding: "9px 10px", fontFamily: "ui-monospace,monospace" }} />
@@ -265,7 +358,7 @@ function Index() {
             {res && !busy && (
               <>
                 <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: C.mut }}>
-                  averaged over <b style={{ color: C.chalk }}>{res.n.toLocaleString()}</b> sims · projected <b style={{ color: C.field }}>{T[GAMES[sel].away].abbr} {num(res.away.pts)}</b> — <b style={{ color: C.field }}>{num(res.home.pts)} {T[GAMES[sel].home].abbr}</b> · {(res.home.pts > res.away.pts ? T[GAMES[sel].home].abbr : T[GAMES[sel].away].abbr)} favored {num(Math.max(res.home.winPct, res.away.winPct) * 100)}%
+                  averaged over <b style={{ color: C.chalk }}>{res.n.toLocaleString()}</b> sims · projected <b style={{ color: C.field }}>{TT[games[sel].away].abbr} {num(res.away.pts)}</b> — <b style={{ color: C.field }}>{num(res.home.pts)} {TT[games[sel].home].abbr}</b> · {(res.home.pts > res.away.pts ? TT[games[sel].home].abbr : TT[games[sel].away].abbr)} favored {num(Math.max(res.home.winPct, res.away.winPct) * 100)}%
                 </div>
                 <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
                   <Team t={res.away} /><Team t={res.home} />
