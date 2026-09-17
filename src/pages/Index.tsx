@@ -1,356 +1,158 @@
-import { useEffect, useRef, useState } from "react";
-import { Bike, Skull, Copy, Check, Send, Twitter, Send as Tg, Flame, Rocket, Ear, Volume2, VolumeX } from "lucide-react";
+import { useState } from "react";
+import { Twitter, Send, Eye } from "lucide-react";
 
-/* ============================ palette (self-contained boxing-degen) ============================ */
+/* ---- palette: detective corkboard ---- */
 const C = {
-  bg: "#0a0a08",
-  panel: "#15140f",
-  panel2: "#1c1a12",
-  border: "#2a2718",
-  text: "#f6f4ea",
-  muted: "#8f897a",
-  gold: "#ffcb1e",
-  green: "#38ff9d",
-  red: "#ff3b3b",
-  blue: "#43b7ff",
+  cork: "#b07e4e", cork2: "#9a6a3c", paper: "#f4ecd6", note: "#f6e05e",
+  ink: "#2a2016", red: "#c62f27", redHot: "#ff3b2f", tape: "#d9cf9e",
 };
-const glow = (c: string, s = 20) => ({ boxShadow: `0 0 ${s}px ${c}44, 0 0 ${s * 2}px ${c}22` });
-const tglow = (c: string, s = 14) => ({ textShadow: `0 0 ${s}px ${c}cc` });
-const CA = "BiKE7yoNmikEeAtsYoUrEaR4Wh33Lz0nSol4nApump";
+const CAT = "/catspiracy-cat.png";
+const PHRASES = ["THE CAT KNOWS.", "WAKE UP.", "IT WAS NEVER JUST A NAP.", "THE RED DOT IS A LIE.", "3AM ZOOMIES = COORDINATES.", "TRUST NO WHISKER.", "THEY SEE YOU BLINK."];
 
-/* ============================ Bike Tyson's brain (lisp, memeable, degen) ============================ */
-const LINES: Record<string, string[]> = {
-  hi: [
-    "Thup. I'm Bike Tython. Mind the thpoketh.",
-    "Ayy. You talkin' to the baddeth man on two wheelth. *revth pedalth*",
-    "Hello thweetheart. Wanna go for a ride? Hop on the pegth.",
-  ],
-  who: [
-    "I'm Bike Tython. Iron Mike, but they welded me to a Huffy. Now I'm unthtoppable, baby.",
-    "Thome men got legth. I got a drivetrain and a bad attitude.",
-    "Handth of a champion. Wheelth of a BMX. Do the math, thucker.",
-  ],
-  fight: [
-    "Everybody got a plan till I pedal into their fathe.",
-    "I'll hit you tho hard your CHAIN fallth off.",
-    "My thtyle ith impetuouth, my defenthe ith impregnable, and my braketh are BROKEN.",
-    "I'll knock you into next Tuethday then bunny-hop over the body. Ferothiouth.",
-  ],
-  ear: [
-    "Don't tempt me. I'll bite your ear AND your bike bell.",
-    "Holyfield thtill lookin' for hith ear. I keep it in the thaddlebag with my thnackth.",
-    "You got two earth? One for me, one for later. Ath a treat.",
-  ],
-  bike: [
-    "Wheelth don't lie, playboy. I do 40 in a thchool zone.",
-    "Flat tire? I'll run on the RIMTH outta pure thpite.",
-    "*pullth a wheelie* Thith ith my meditation. Namathte, thucker.",
-    "Carbon fiber legth. Titanium temper. One thpeed: ferothiouth.",
-  ],
-  crypto: [
-    "$BIKE goin' to the moon and I'm pedalin' it there mythelf.",
-    "Diamond handth? I got diamond HANDLEBARTH. HODL or get run over.",
-    "Wen moon? When I THAY tho. Buy the dip or I bite the dip.",
-    "You didn't ape into $BIKE? Weak. Ath weak ath a training wheel.",
-    "Number go up 'cauthe I told it to. Ferothiouthly.",
-  ],
-  fart: [
-    "Fartr? That thite wath GATH. Now we pedal. But I'll thtill clear a room.",
-    "The old branding wath a lil' thtinky. I'm here to blow you away DIFFERENTLY.",
-  ],
-  love: [
-    "Awww. You'th thweet. I won't eat your ear TODAY.",
-    "Baithed. Get on the pegth, we ridin' into the thunthet.",
-  ],
-  rude: [
-    "Talk to me like that again and I'll DEFLATE you, thmall fry.",
-    "You got the thpine of a wet noodle and the wheelth of a thoppin' cart.",
-    "I've thparred with tougher TRAINING WHEELTH.",
-  ],
-  bye: ["Thmell you later, playboy. Keep it greathy-thide down.", "Pedal thafe. Or don't. I don't care, I'm ferothiouth."],
-  default: [
-    "Thpeak up, I got my helmet on.",
-    "That'th cute. Now go buy $BIKE.",
-    "Everybody got a plan till they hear the thpoketh clickin'.",
-    "I don't fully underthtand but I rethpect the energy. Pedal on.",
-    "Hmm. *chewth on a handlebar* Thay more.",
-  ],
-};
-const KW: [string, RegExp][] = [
-  ["bye", /\b(bye|later|cya|gtg|leave|goodbye)\b/],
-  ["who", /\b(who|what).{0,12}(you|ur|are|is bike)|your name|about you|bike tyson\b/],
-  ["fight", /\b(fight|box|punch|hit|knock|beat|scared|smoke|beef|jab|spar|tough)\b/],
-  ["ear", /\b(ear|bite|eat|chew|holyfield)\b/],
-  ["bike", /\b(bike|wheel|pedal|ride|spoke|chain|tire|cycl|wheelie|handlebar)\b/],
-  ["crypto", /\b(buy|moon|pump|token|coin|\$bike|crypto|price|chart|rug|ape|wen|when|invest|hodl|dip|market|ca\b|contract)\b/],
-  ["fart", /\b(fart|fartr|stink|smell|gas|poot)\b/],
-  ["love", /\b(love|nice|cute|good|cool|based|goat|legend|king|respect|lol|lmao|haha)\b/],
-  ["rude", /\b(idiot|dumb|stupid|hate|trash|suck|weak|loser|ugly|shut up)\b/],
-  ["hi", /\b(hi|hey|yo|sup|hello|wassup|whatup|gm)\b/],
+/* pinned evidence scattered around the edges (center stays clear for the SUSPECT) */
+const EV: { t: "note" | "clip" | "photo" | "stamp" | "doc"; x: string; y: string; r: number; h?: string; b?: string }[] = [
+  { t: "note", x: "3%", y: "16%", r: -6, b: "who moved my food bowl at 3AM??" },
+  { t: "clip", x: "2%", y: "50%", r: 4, h: "LOCAL CAT", b: "'just happened' to sit on the keyboard DURING the wire transfer" },
+  { t: "photo", x: "6%", y: "76%", r: -8, h: "SUSPECT · DAY 4", b: "🐈" },
+  { t: "stamp", x: "16%", y: "6%", r: -12, b: "TOP SECRET" },
+  { t: "note", x: "80%", y: "12%", r: 7, b: "16h of sleep = they're LULLING us" },
+  { t: "doc", x: "78%", y: "40%", r: -4, h: "FIELD REPORT", b: "subject stared at empty wall 40 min. wall was empty. OR WAS IT." },
+  { t: "photo", x: "83%", y: "70%", r: 9, h: "EVIDENCE #7", b: "[REDACTED]" },
+  { t: "stamp", x: "70%", y: "82%", r: 8, b: "CLASSIFIED" },
+  { t: "note", x: "40%", y: "4%", r: -3, b: "the red dot is GOVERNMENT" },
 ];
-const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
-function bikeSays(input: string): string {
-  const s = input.toLowerCase();
-  for (const [k, re] of KW) if (re.test(s)) return pick(LINES[k]);
-  return pick(LINES.default);
-}
-
-type Msg = { who: "you" | "bike"; text: string };
 
 function Index() {
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { who: "bike", text: "Thup. I'm Bike Tython. Athk me anything — but watch your earth. What'th on your mind, playboy?" },
-  ]);
-  const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
   const [imgOk, setImgOk] = useState(true);
-  const [imgSrc, setImgSrc] = useState("/bike-tyson.png"); // prefer a transparent PNG; on error fall back to the .jpg, then the emoji
-  const [price, setPrice] = useState(0.000428);
-  const scroller = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [msgs, typing]);
-  useEffect(() => { const t = setInterval(() => setPrice((p) => Math.max(0.00001, p * (1 + (Math.random() - 0.35) * 0.06))), 1400); return () => clearInterval(t); }, []);
-
-  // ===== sound FX (Web Audio, no files) — bike bell on send, punch thud on reply =====
-  const [muted, setMuted] = useState(() => { try { return localStorage.getItem("bt_muted") === "1"; } catch { return false; } });
-  const audioRef = useRef<AudioContext | null>(null);
-  const actx = () => {
-    if (!audioRef.current) { try { audioRef.current = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch { return null; } }
-    const c = audioRef.current; if (c && c.state === "suspended") c.resume().catch(() => {}); return c;
-  };
-  const bell = () => {
-    if (muted) return; const c = actx(); if (!c) return; const t0 = c.currentTime;
-    const ding = (s: number, f: number) => [f, f * 2.76, f * 5.4].forEach((fr, i) => {
-      const o = c.createOscillator(), g = c.createGain(); o.type = "sine"; o.frequency.value = fr;
-      const a = 0.22 / (i + 1); g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(a, s + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, s + 0.5);
-      o.connect(g).connect(c.destination); o.start(s); o.stop(s + 0.55);
-    });
-    ding(t0, 1760); ding(t0 + 0.12, 1976); // ding-ding
-  };
-  const punch = () => {
-    if (muted) return; const c = actx(); if (!c) return; const t0 = c.currentTime;
-    const o = c.createOscillator(), g = c.createGain(); o.type = "sine";
-    o.frequency.setValueAtTime(190, t0); o.frequency.exponentialRampToValueAtTime(55, t0 + 0.13);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(0.5, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
-    o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + 0.25);
-    const dur = 0.12, buf = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * dur)), c.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const n = c.createBufferSource(); n.buffer = buf; const nf = c.createBiquadFilter(); nf.type = "lowpass"; nf.frequency.value = 1200;
-    const ng = c.createGain(); ng.gain.setValueAtTime(0.35, t0); ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
-    n.connect(nf).connect(ng).connect(c.destination); n.start(t0); n.stop(t0 + dur);
-  };
-  const toggleMute = () => setMuted((m) => { const v = !m; try { localStorage.setItem("bt_muted", v ? "1" : "0"); } catch {} return v; });
-
-  const send = (t?: string) => {
-    const text = (t ?? input).trim();
-    if (!text) return;
-    bell();
-    setMsgs((m) => [...m, { who: "you", text }]);
-    setInput("");
-    setTyping(true);
-    setTimeout(() => {
-      setMsgs((m) => [...m, { who: "bike", text: bikeSays(text) }]);
-      setTyping(false);
-      punch();
-    }, 650 + Math.random() * 700);
-  };
-  const copyCA = () => { navigator.clipboard?.writeText(CA).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); };
+  const [glitch, setGlitch] = useState(false);
+  const poke = () => { setFlash(PHRASES[Math.floor(Math.random() * PHRASES.length)]); setGlitch(true); setTimeout(() => setGlitch(false), 320); setTimeout(() => setFlash(null), 1400); };
 
   return (
-    <div style={{ background: C.bg, color: C.text, minHeight: "100vh" }} className="relative overflow-hidden">
+    <div id="board">
       <style>{`
-        @keyframes wobble { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
-        @keyframes rollx { from{transform:translateX(0)} to{transform:translateX(-50%)} }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
-        @keyframes pop { from{opacity:0;transform:translateY(8px) scale(.98)} to{opacity:1;transform:none} }
-        .wobble{ animation: wobble 2.4s ease-in-out infinite }
-        .marq{ display:flex; width:max-content; animation: rollx 26s linear infinite }
-        .pop{ animation: pop .2s ease-out }
-        .dot{ animation: blink 1s infinite }
-        .dot:nth-child(2){ animation-delay:.2s } .dot:nth-child(3){ animation-delay:.4s }
+        @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Anton&display=swap');
+        html,body,#root{ height:100%; margin:0; overflow:hidden; }
+        #board{ position:fixed; inset:0; overflow:hidden; font-family:'Special Elite',ui-monospace,monospace; color:${C.ink};
+          background:
+            radial-gradient(circle at 30% 20%, #00000018 0 2px, transparent 3px),
+            radial-gradient(circle at 70% 60%, #00000014 0 2px, transparent 3px),
+            radial-gradient(120% 90% at 50% 0%, ${C.cork} 0%, ${C.cork2} 70%, #7d5730 100%);
+          background-size:22px 22px, 30px 30px, 100% 100%; }
+        #board:before{ content:""; position:absolute; inset:0; pointer-events:none; opacity:.06;
+          background:repeating-linear-gradient(0deg,#000 0 1px,transparent 1px 3px); }
+        .vign{ position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 220px #000a; }
+
+        .pin{ position:absolute; width:14px; height:14px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #ff8a80, ${C.red} 60%, #6b120d); box-shadow:0 2px 4px #0007; top:-7px; left:50%; transform:translateX(-50%); z-index:2; }
+        .ev{ position:absolute; z-index:2; transform-origin:top center; filter:drop-shadow(0 8px 10px #0006); max-width:190px; }
+        .ev .card{ position:relative; padding:10px 12px; font-size:12px; line-height:1.25; }
+        .note .card{ background:${C.note}; color:#3a2f10; box-shadow:0 1px 0 #0002; }
+        .clip .card,.doc .card,.photo .card{ background:${C.paper}; }
+        .clip h4,.doc h4,.photo h4{ margin:0 0 4px; font-family:'Anton',sans-serif; letter-spacing:.5px; font-weight:400; }
+        .clip .card{ border:1px solid #0002; }
+        .photo .card{ text-align:center; padding:8px 8px 20px; }
+        .photo .pic{ height:70px; display:grid; place-items:center; font-size:40px; background:#dcd2b6; margin-bottom:6px; color:#6b5a34; }
+        .stamp{ position:absolute; z-index:3; font-family:'Anton',sans-serif; font-size:20px; letter-spacing:2px; color:${C.red}; border:3px solid ${C.red}; padding:2px 8px; opacity:.82; border-radius:4px; text-shadow:1px 1px 0 #0002; }
+        .tape{ position:absolute; top:-9px; left:50%; transform:translateX(-50%) rotate(-3deg); width:52px; height:16px; background:${C.tape}; opacity:.75; }
+
+        /* title */
+        .hdr{ position:absolute; top:2.5vh; left:50%; transform:translateX(-50%); text-align:center; z-index:6; width:96%; }
+        .hdr h1{ font-family:'Anton',sans-serif; font-weight:400; font-size:clamp(40px,10vw,104px); letter-spacing:3px; margin:0; color:${C.paper};
+          text-shadow:0 0 2px #000, 4px 4px 0 ${C.red}, 6px 6px 0 #000; }
+        .hdr .sub{ margin-top:2px; font-size:clamp(11px,2.2vw,15px); color:#ffe9c2; letter-spacing:2px; }
+        .hdr .tag{ margin-top:4px; color:${C.redHot}; font-size:clamp(12px,2.4vw,17px); text-shadow:1px 1px 0 #000; }
+
+        /* the SUSPECT (rises from bottom-middle to center, enlarged) */
+        .catwrap{ position:absolute; left:50%; top:52%; z-index:5; cursor:pointer; animation:rise 1.7s cubic-bezier(.18,.85,.25,1) forwards; }
+        @keyframes rise{ 0%{ transform:translate(-50%, calc(-50% + 64vh)) scale(1.16); opacity:0 } 22%{ opacity:1 } 100%{ transform:translate(-50%,-50%) scale(1); opacity:1 } }
+        .cat{ height:min(60vh,540px); width:auto; display:block; animation:bob 3.8s ease-in-out 1.7s infinite; filter:drop-shadow(0 20px 30px #000b); }
+        .cat.emoji{ font-size:min(48vh,420px); line-height:1; }
+        @keyframes bob{ 0%,100%{ transform:translateY(0) rotate(0) } 50%{ transform:translateY(-12px) rotate(-1deg) } }
+        .glow{ position:absolute; left:50%; bottom:-4vh; transform:translateX(-50%); width:70%; height:24px; background:radial-gradient(ellipse, #000 0%, transparent 70%); opacity:.5; }
+        .glitch{ animation:gl .3s steps(2) 2; }
+        @keyframes gl{ 0%{ filter:hue-rotate(0) } 50%{ transform:translate(-50%,-50%) translateX(6px); filter:hue-rotate(40deg) contrast(1.4) } 100%{} }
+
+        /* suspect markings */
+        .ring{ position:absolute; left:50%; top:34%; transform:translate(-50%,-50%); width:min(34vh,300px); height:min(34vh,300px); border:4px dashed ${C.redHot}; border-radius:50%; z-index:4; pointer-events:none; opacity:.9; animation:spin 22s linear infinite; }
+        @keyframes spin{ to{ transform:translate(-50%,-50%) rotate(360deg) } }
+        .suspect{ position:absolute; left:calc(50% + min(20vh,180px)); top:20%; z-index:6; color:${C.paper}; background:${C.red}; font-family:'Anton',sans-serif; padding:3px 10px; transform:rotate(6deg); box-shadow:3px 3px 0 #0007; letter-spacing:1px; }
+        .arrow{ position:absolute; z-index:5; color:${C.redHot}; font-size:34px; font-family:'Anton',sans-serif; text-shadow:2px 2px 0 #000; }
+
+        .flash{ position:absolute; left:50%; top:44%; transform:translate(-50%,-50%) rotate(-4deg); z-index:9; font-family:'Anton',sans-serif; font-size:clamp(28px,6vw,64px); color:${C.redHot}; text-shadow:0 0 18px ${C.red}, 3px 3px 0 #000; pointer-events:none; animation:pop .2s steps(3); }
+        @keyframes pop{ from{ opacity:0; transform:translate(-50%,-50%) rotate(-4deg) scale(.6) } to{} }
+
+        .rec{ position:absolute; top:14px; right:16px; z-index:7; font-size:13px; color:${C.redHot}; letter-spacing:1px; }
+        .rec b{ display:inline-block; width:9px; height:9px; border-radius:50%; background:${C.redHot}; margin-right:6px; animation:blink 1s steps(1) infinite; }
+        @keyframes blink{ 50%{ opacity:.2 } }
+
+        /* bottom bar */
+        .bar{ position:absolute; bottom:0; left:0; right:0; z-index:7; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; padding:8px 12px;
+          background:linear-gradient(0deg,#00000066,transparent); }
+        .bar .tk{ font-size:12px; color:#ffe9c2; }
+        .bar .tk b{ color:${C.redHot}; }
+        .btn{ font-family:'Anton',sans-serif; letter-spacing:1px; border:none; cursor:pointer; padding:9px 16px; border-radius:6px; background:${C.red}; color:${C.paper}; box-shadow:0 4px 0 #0007; transition:transform .08s; }
+        .btn:active{ transform:translateY(3px); box-shadow:0 1px 0 #0007; }
+        .ic{ display:grid; place-items:center; width:36px; height:36px; border-radius:8px; background:#00000055; color:#ffe9c2; border:1px solid #ffffff22; }
       `}</style>
 
-      {/* grungy bg */}
-      <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `radial-gradient(circle at 50% -10%, ${C.gold}18, transparent 55%)` }} />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.04]" style={{ backgroundImage: `repeating-linear-gradient(45deg, ${C.text} 0 2px, transparent 2px 18px)` }} />
+      <div className="rec"><b/>REC · SURVEILLANCE ACTIVE</div>
 
-      {/* nav */}
-      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.red})`, ...glow(C.gold, 12) }}>
-            <Bike className="h-5 w-5" style={{ color: "#180f00" }} />
-          </div>
-          <span className="text-xl font-black tracking-tight" style={tglow(C.gold)}>BIKE&nbsp;TYTHON</span>
-          <span className="ml-2 hidden rounded px-1.5 py-0.5 text-[10px] font-black sm:inline" style={{ background: C.green + "22", color: C.green }}>$BIKE</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-mono text-xs sm:flex" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-            <span style={{ color: C.muted }}>$BIKE</span><span className="font-bold" style={{ color: C.green }}>${price.toFixed(6)}</span>
-          </div>
-          <a href="#buy" className="rounded-lg px-3 py-2 text-sm font-black transition-transform active:scale-95" style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.red})`, color: "#180f00", ...glow(C.gold, 10) }}>BUY $BIKE</a>
-        </div>
-      </header>
+      {/* red string connecting the evidence */}
+      <svg style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }} width="100%" height="100%" preserveAspectRatio="none">
+        {[["8%", "22%", "42%", "10%"], ["42%", "10%", "84%", "18%"], ["8%", "55%", "50%", "50%"], ["50%", "50%", "86%", "46%"], ["12%", "80%", "50%", "50%"], ["50%", "50%", "74%", "86%"]].map((l, i) => (
+          <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} stroke={C.red} strokeWidth="2" opacity="0.75" />
+        ))}
+      </svg>
 
-      {/* ticker */}
-      <div className="relative z-10 border-y py-2" style={{ borderColor: C.border, background: C.panel }}>
-        <div className="marq gap-8 px-4 text-xs font-bold" style={{ color: C.muted }}>
-          {[...Array(2)].map((_, k) => (
-            <div key={k} className="flex gap-8 whitespace-nowrap">
-              <span>🚴 THE BADDETH MAN ON TWO WHEELTH</span>
-              <span style={{ color: C.gold }}>👂 I'LL BITE YOUR EAR AND YOUR BIKE BELL</span>
-              <span style={{ color: C.green }}>💎 DIAMOND HANDLEBARTH · HODL $BIKE</span>
-              <span style={{ color: C.red }}>🥊 FEROTHIOUTH · IMPREGNABLE · FULLY THUTHPENDED</span>
-              <span>🌕 WEN MOON? WHEN I THAY THO</span>
+      {/* evidence */}
+      {EV.map((e, i) => (
+        <div key={i} className={"ev " + e.t} style={{ left: e.x, top: e.y, transform: `rotate(${e.r}deg)` }}>
+          {e.t === "stamp" ? (
+            <div className="stamp">{e.b}</div>
+          ) : (
+            <div className="card">
+              <span className="pin" />
+              {e.t === "photo" && <div className="pic">{e.b}</div>}
+              {e.h && <h4>{e.h}</h4>}
+              {e.t !== "photo" ? <div>{e.b}</div> : <div style={{ fontSize: 11 }}>{e.h}</div>}
             </div>
-          ))}
+          )}
         </div>
+      ))}
+
+      {/* title */}
+      <div className="hdr">
+        <h1>CATSPIRACY</h1>
+        <div className="sub">// CASE FILE #9 · THE FELINE AGENDA</div>
+        <div className="tag">wake up. the cats know. 🔺</div>
       </div>
 
-      {/* hero + chat */}
-      <main className="relative z-10 mx-auto max-w-6xl px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]">
-          {/* hero / character */}
-          <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-            <div className="wobble relative mb-4 w-full max-w-[340px]">
-              <div className="grid aspect-square w-full place-items-center rounded-3xl p-3" style={{ background: `radial-gradient(circle at 50% 42%, ${C.gold}22, transparent 66%)` }}>
-                {imgOk ? (
-                  <img
-                    src={imgSrc}
-                    alt="Bike Tyson"
-                    className="h-full w-full object-contain"
-                    style={{ filter: `drop-shadow(0 10px 22px ${C.red}44) drop-shadow(0 0 34px ${C.gold}55)` }}
-                    onError={() => { if (imgSrc.endsWith(".png")) setImgSrc("/bike-tyson.jpg"); else setImgOk(false); }}
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-                    <div className="text-[92px] leading-none">🚴‍♂️🥊</div>
-                    <div className="px-4 text-xs" style={{ color: C.muted }}>drop a transparent <code style={{ color: C.gold }}>bike-tyson.png</code> in <code>/public</code></div>
-                  </div>
-                )}
-              </div>
-              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-black" style={{ background: C.red, color: "#fff", ...glow(C.red, 10) }}>👂 100% EAR-FREE GUARANTEE*</div>
-            </div>
-            <h1 className="text-4xl font-black leading-none sm:text-5xl" style={tglow(C.gold, 18)}>BIKE&nbsp;TYTHON</h1>
-            <p className="mt-3 text-sm" style={{ color: C.muted }}>
-              Mike Tython. But hith body ith on a bike. And he hath wheelth. He'th ferothiouth, he'th on-chain, and he WILL pedal through your thkull. Athk him thomething. If you dare.
-            </p>
-            <div className="mt-4 flex gap-2">
-              <a href="#" className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: C.panel, border: `1px solid ${C.border}` }}><Twitter className="h-4 w-4" style={{ color: C.blue }} /></a>
-              <a href="#" className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: C.panel, border: `1px solid ${C.border}` }}><Tg className="h-4 w-4" style={{ color: C.blue }} /></a>
-              <a href="#buy" className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: C.panel, border: `1px solid ${C.border}` }}><Rocket className="h-4 w-4" style={{ color: C.green }} /></a>
-            </div>
-          </section>
+      {/* suspect markings */}
+      <div className="ring" />
+      <div className="suspect">SUSPECT&nbsp;#1</div>
+      <div className="arrow" style={{ left: "24%", top: "58%", transform: "rotate(-18deg)" }}>➜</div>
+      <div className="arrow" style={{ right: "24%", top: "62%", transform: "scaleX(-1) rotate(-16deg)" }}>➜</div>
+      {flash && <div className="flash">{flash}</div>}
 
-          {/* CHAT */}
-          <section className="flex flex-col rounded-2xl" style={{ background: C.panel, border: `1px solid ${C.border}`, height: "min(72vh, 640px)" }}>
-            <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: C.border }}>
-              <div className="grid h-8 w-8 place-items-center rounded-full text-lg" style={{ background: C.panel2, border: `1px solid ${C.gold}55` }}>🚴</div>
-              <div>
-                <div className="text-sm font-black">Bike Tython</div>
-                <div className="flex items-center gap-1 text-[11px]" style={{ color: C.green }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /> online · ferothiouth</div>
-              </div>
-              <div className="ml-auto flex items-center gap-2">
-                <span className="hidden items-center gap-1 text-[11px] sm:flex" style={{ color: C.muted }}><Skull className="h-3.5 w-3.5" /> AI agent (allegedly)</span>
-                <button onClick={toggleMute} title={muted ? "unmute" : "mute"} className="grid h-7 w-7 place-items-center rounded-lg transition-colors" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: muted ? C.muted : C.gold }}>
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+      {/* the cat */}
+      <div className={"catwrap" + (glitch ? " glitch" : "")} onClick={poke} title="do not look directly at the subject">
+        {imgOk ? (
+          <img className="cat" src={CAT} alt="Catspiracy — the subject" onError={() => setImgOk(false)} />
+        ) : (
+          <div className="cat emoji" style={{ height: "min(48vh,420px)" }}>🐱</div>
+        )}
+        <div className="glow" />
+      </div>
 
-            <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
-              {msgs.map((m, i) => (
-                <div key={i} className={`pop flex ${m.who === "you" ? "justify-end" : "justify-start"}`}>
-                  {m.who === "bike" && <div className="mr-2 grid h-8 w-8 shrink-0 place-items-center self-end rounded-full text-base" style={{ background: C.panel2, border: `1px solid ${C.gold}55` }}>🚴</div>}
-                  <div className="max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-snug" style={m.who === "you"
-                    ? { background: `linear-gradient(135deg, ${C.gold}, ${C.red})`, color: "#180f00", fontWeight: 600, borderBottomRightRadius: 4 }
-                    : { background: C.panel2, border: `1px solid ${C.border}`, borderBottomLeftRadius: 4 }}>
-                    {m.text}
-                  </div>
-                </div>
-              ))}
-              {typing && (
-                <div className="flex justify-start">
-                  <div className="mr-2 grid h-8 w-8 shrink-0 place-items-center self-end rounded-full text-base" style={{ background: C.panel2, border: `1px solid ${C.gold}55` }}>🚴</div>
-                  <div className="rounded-2xl px-4 py-3" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                    <div className="flex gap-1">{[0, 1, 2].map((d) => <span key={d} className="dot h-1.5 w-1.5 rounded-full" style={{ background: C.muted }} />)}</div>
-                  </div>
-                </div>
-              )}
-            </div>
+      {/* bottom bar */}
+      <div className="bar">
+        <span className="tk">$CATSPIRACY <b>+337%</b></span>
+        <button className="btn" onClick={poke}><Eye size={14} style={{ marginBottom: -2, marginRight: 4 }} />JOIN THE INVESTIGATION</button>
+        <a className="ic" href="#" aria-label="x"><Twitter size={18} /></a>
+        <a className="ic" href="#" aria-label="tg"><Send size={18} /></a>
+      </div>
 
-            {/* quick prompts */}
-            <div className="flex flex-wrap gap-1.5 px-4 pb-2">
-              {["who are you?", "fight me", "wen moon?", "your ear tho", "$BIKE?"].map((q) => (
-                <button key={q} onClick={() => send(q)} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.muted }}>{q}</button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2 border-t p-3" style={{ borderColor: C.border }}>
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                placeholder="Thay thomething to Bike Tython…"
-                className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
-                style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text }}
-              />
-              <button onClick={() => send()} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-transform active:scale-90" style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.red})`, ...glow(C.gold, 8) }}>
-                <Send className="h-4 w-4" style={{ color: "#180f00" }} />
-              </button>
-            </div>
-          </section>
-        </div>
-
-        {/* ===== $BIKE / degen ===== */}
-        <section id="buy" className="mt-8 rounded-2xl p-5" style={{ background: `linear-gradient(160deg, ${C.green}0d, ${C.panel})`, border: `1px solid ${C.green}44`, ...glow(C.green, 6) }}>
-          <div className="mb-4 flex items-center gap-2 text-lg font-black"><Flame className="h-5 w-5" style={{ color: C.green }} /> $BIKE — the officialeth token of Bike Tython</div>
-          <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
-            <div>
-              <div className="mb-1 text-xs" style={{ color: C.muted }}>CONTRACT ADDRETH (thend it or he findth you)</div>
-              <button onClick={copyCA} className="mb-4 flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left font-mono text-xs" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-                <span className="truncate" style={{ color: C.gold }}>{CA}</span>
-                {copied ? <Check className="h-4 w-4 shrink-0" style={{ color: C.green }} /> : <Copy className="h-4 w-4 shrink-0" style={{ color: C.muted }} />}
-              </button>
-              <div className="flex flex-wrap gap-2">
-                {["Buy on pump.fun", "Uniswap", "DexThcreener"].map((b) => (
-                  <a key={b} href="#" className="rounded-xl px-4 py-2.5 text-sm font-black transition-transform active:scale-95" style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.red})`, color: "#180f00", ...glow(C.gold, 8) }}>{b} →</a>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl p-4" style={{ background: C.panel2, border: `1px solid ${C.border}` }}>
-              <div className="mb-2 text-xs font-black" style={{ color: C.muted }}>TOKENOMICTH</div>
-              {[["Thupply", "1,000,000,000 $BIKE"], ["Tax", "0% (he'th too fatht to tax)"], ["Team allocation", "1 (one) ear"], ["Utility", "he pedalth. number go up."], ["Roadmap", "wheelie → moon → your neighborhood"]].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between border-t py-1.5 text-xs" style={{ borderColor: C.border }}>
-                  <span style={{ color: C.muted }}>{k}</span><span className="font-mono font-bold" style={{ color: C.text }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* lore */}
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
-          {[
-            { i: <Bike className="h-5 w-5" />, t: "The Athident", d: "One day Iron Mike leaned into a turn too hard. The doctorth couldn't thave the legth. Tho they gave him wheelth. He hath never been faether — or angrier." },
-            { i: <Ear className="h-5 w-5" />, t: "The Diet", d: "Bike Tython runth entirely on rage, protein, and the occathional ear. Do NOT offer him a helmet. He'll bite it." },
-            { i: <Rocket className="h-5 w-5" />, t: "The Mithion", d: "Pedal $BIKE to the moon. Bite the nay-thayerth. Do a thick wheelie the entire way there. WAGMI, playboy." },
-          ].map((c) => (
-            <div key={c.t} className="rounded-2xl p-5" style={{ background: C.panel, border: `1px solid ${C.border}` }}>
-              <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg" style={{ background: C.panel2, color: C.gold }}>{c.i}</div>
-              <div className="mb-1 font-black">{c.t}</div>
-              <p className="text-sm" style={{ color: C.muted }}>{c.d}</p>
-            </div>
-          ))}
-        </section>
-      </main>
-
-      <footer className="relative z-10 mt-8 border-t px-4 py-8 text-center" style={{ borderColor: C.border }}>
-        <div className="flex items-center justify-center gap-2 font-black"><Bike className="h-4 w-4" style={{ color: C.gold }} /> BIKE&nbsp;TYTHON</div>
-        <p className="mx-auto mt-3 max-w-2xl text-[10px]" style={{ color: C.muted }}>
-          Parody. For the memeth. Bike Tython ith a fithtional cartoon man welded to a bithycle and ith not affiliated with any real perthon, athlete, or bike. $BIKE ith a joke token with no value, no team, and no earth. Nothing here ith financial advithe. *Ear-free guarantee not guaranteed. 🚴‍♂️
-        </p>
-      </footer>
+      <div className="vign" />
     </div>
   );
 }
