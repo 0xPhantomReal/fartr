@@ -1396,6 +1396,7 @@ function simPlayer(p: Player, d: Team["def"], hm: number, pace: number, r: () =>
 }
 
 type PRes = { name: string; pos: Pos; fp: number; sd: number; line: Line };
+type RankRow = PRes & { team: string; opp: string; home: boolean };  // a player pooled across the whole slate
 type TRes = { abbr: string; name: string; pts: number; ptsSd: number; winPct: number; players: PRes[] };
 
 /* Incremental runner so a big N genuinely animates a progress bar and each RUN
@@ -1459,6 +1460,10 @@ function Index() {
   const [showCfg, setShowCfg] = useState(false);
   const [draft, setDraft] = useState(proxy);
   const [league, setLeague] = useState<League>(() => { try { return (localStorage.getItem("gs_league") as League) || "nfl"; } catch { return "nfl"; } });
+  const [ranks, setRanks] = useState<RankRow[] | null>(null);
+  const [rankBusy, setRankBusy] = useState(false);
+  const [rankProg, setRankProg] = useState(0);
+  const [posFilter, setPosFilter] = useState<"ALL" | Pos>("ALL");
 
   // resolve data: Worker (NFL only, full live) → ESPN real slate + baked usage → offline demo
   useEffect(() => {
@@ -1466,8 +1471,8 @@ function Index() {
     (async () => {
       setLoading(true);
       const base = league === "cfb" ? CFB_T : CURATED_T;
-      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ } }
-      try { const d = await loadESPN(base, league); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ }
+      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(d); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
+      try { const d = await loadESPN(base, league); if (alive) { setData(d); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
       if (alive) { setData(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED); setLoading(false); }
     })();
     return () => { alive = false; };
@@ -1495,6 +1500,32 @@ function Index() {
     };
     requestAnimationFrame(tick);
   };
+
+  // ---- SLATE RANKINGS: simulate EVERY game on the slate, pool the players, rank by projected FP ----
+  const runAll = () => {
+    if (rankBusy || !games.length) return;
+    const n = clamp(Math.round(sims) || 1, 100, 20000);             // capped: this runs once per game on the slate
+    setRankBusy(true); setRanks(null); setRankProg(0);
+    const rows: RankRow[] = [];
+    let gi = 0;
+    const step = () => {
+      const t0 = performance.now();
+      while (gi < games.length && performance.now() - t0 < 30) {     // a few games per frame → the bar actually moves
+        const g = games[gi];
+        const st = simInit(TT[g.home], TT[g.away], ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0) || 1);
+        simStep(st, n);
+        const out = simFinish(st);
+        for (const p of out.home.players) rows.push({ ...p, team: g.home, opp: g.away, home: true });
+        for (const p of out.away.players) rows.push({ ...p, team: g.away, opp: g.home, home: false });
+        gi++;
+      }
+      setRankProg(gi / games.length);
+      if (gi < games.length) requestAnimationFrame(step);
+      else { rows.sort((a, b) => b.fp - a.fp); setRanks(rows); setRankBusy(false); }
+    };
+    requestAnimationFrame(step);
+  };
+  const shownRanks = ranks ? (posFilter === "ALL" ? ranks : ranks.filter((r) => r.pos === posFilter)) : [];
 
   const live = data.source !== "curated";
   const srcLabel = data.source.includes("sportsdataio") ? "live · SportsDataIO" + (data.source.includes("nflverse") ? " + nflverse" : "")
@@ -1563,6 +1594,49 @@ function Index() {
 
         {sel == null ? (
           <>
+            {/* SLATE RANKINGS — simulate every game, pool the players, rank by projected FP */}
+            <div style={{ ...box, padding: 14, margin: "18px 0 4px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>Slate rankings</div>
+                  <div style={{ fontSize: 11, color: C.mut, marginTop: 2 }}>Simulate all {games.length} games and rank every player by projected fantasy points</div>
+                </div>
+                <button onClick={runAll} disabled={rankBusy || loading || !games.length} style={{ background: rankBusy || loading || !games.length ? "#16281f" : `linear-gradient(135deg,${C.gold},#d89b00)`, color: rankBusy || loading || !games.length ? C.mut : "#1a1200", border: "none", borderRadius: 10, fontWeight: 900, padding: "10px 18px", cursor: rankBusy ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {rankBusy ? `SIMULATING ${Math.round(rankProg * games.length)}/${games.length}…` : ranks ? "RE-RUN ⟳" : "RANK ALL PLAYERS ▸"}
+                </button>
+              </div>
+              {rankBusy && (
+                <div style={{ marginTop: 12, height: 8, borderRadius: 8, background: "#0e1c15", border: `1px solid ${C.line}`, overflow: "hidden" }}>
+                  <div style={{ width: `${Math.round(rankProg * 100)}%`, height: "100%", background: `linear-gradient(90deg,${C.gold},${C.field})`, transition: "width .08s linear" }} />
+                </div>
+              )}
+              {ranks && !rankBusy && (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
+                    {(["ALL", "QB", "RB", "WR", "TE"] as const).map((p) => (
+                      <button key={p} onClick={() => setPosFilter(p)} style={{ ...box, cursor: "pointer", padding: "6px 12px", fontSize: 11, fontWeight: 800, color: posFilter === p ? "#04140c" : C.mut, background: posFilter === p ? C.field : "#0e1c15", border: `1px solid ${C.line}` }}>{p}</button>
+                    ))}
+                    <div style={{ marginLeft: "auto", fontSize: 11, color: C.mut, alignSelf: "center" }}>{shownRanks.length} players · {clamp(Math.round(sims) || 1, 100, 20000).toLocaleString()} sims/game</div>
+                  </div>
+                  <div style={{ marginTop: 10, maxHeight: 520, overflowY: "auto" }}>
+                    {shownRanks.map((p, i) => (
+                      <div key={p.team + p.name + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: `1px solid #14261f` }}>
+                        <span style={{ width: 26, textAlign: "right", fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.mut, fontFamily: "ui-monospace,monospace" }}>{i + 1}</span>
+                        <span style={{ width: 28, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.pos}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name} <span style={{ color: C.mut, fontWeight: 400, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span></div>
+                          <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statLine(p)}</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 16, fontWeight: 800, color: C.chalk }}>{num(p.fp)}</div>
+                          <div style={{ fontSize: 10, color: C.mut }}>±{num(p.sd)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>{loading ? "Loading this week's games…" : data.week ? `Week ${data.week} Games` : "This Week's Games"} — tap to simulate</div>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", opacity: loading ? 0.4 : 1 }}>
               {games.map((g, i) => (
