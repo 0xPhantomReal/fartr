@@ -288,7 +288,1005 @@ const CURATED_T: Record<string, Team> = {
     { name: "Z.Ertz", pos: "TE", tgt: 6.4, cr: 0.68, ypr: 10.1, recTD: 0.39 } ] },
 };
 
-type Game = { away: string; home: string; slot: string };
+/* ---- COLLEGE FOOTBALL: real per-player 2025 usage for the FBS teams, same rate model as the
+   NFL set above. Scraped from ESPN (team offense/defense splits + per-athlete season stats).
+   Per-game rates use each TEAM's games played, since ESPN's athlete endpoint carries no
+   games-played field — fine for starters, slightly understates part-season players. ---- */
+const CFB_T: Record<string, Team> = {
+  AFA: { abbr: "AFA", name: "Air Force", pace: 1.02, def: { pass: 1.15, run: 1.06, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 13.7, cmp: 0.59, ypa: 10.62, pTD: 1.08, iNT: 0.58, rYd: 47.1, rTD: 0.55 },
+    { name: "Owen Allen", pos: "RB", car: 11, ypc: 5.68, ruTD: 0.42, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Jonah Dawson", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 21.7, recTD: 0.08, wr1: true } ] },
+  AKR: { abbr: "AKR", name: "Akron", pace: 1.04, def: { pass: 1.05, run: 1.03, cb: 1.09 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 33.7, cmp: 0.52, ypa: 6.5, pTD: 1.67, iNT: 0.75, rYd: 24.2, rTD: 0.15 },
+    { name: "Jordan Gant", pos: "RB", car: 17.8, ypc: 4.85, ruTD: 0.5, tgt: 1, cr: 0.72, ypr: 5.3, recTD: 0.08 },
+    { name: "Sean Patrick", pos: "RB", car: 5.8, ypc: 3.97, ruTD: 0.08, tgt: 1.3, cr: 0.72, ypr: 12.4, recTD: 0 },
+    { name: "Kyan Mason", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 14.6, recTD: 0.42, wr1: true },
+    { name: "Miles Burris", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 9.6, recTD: 0 },
+    { name: "Cameron Monteiro", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 13.6, recTD: 0 },
+    { name: "Conner Cravaack", pos: "TE", tgt: 2.3, cr: 0.65, ypr: 8.2, recTD: 0.17 } ] },
+  ALA: { abbr: "ALA", name: "Alabama", pace: 0.99, def: { pass: 0.85, run: 0.85, cb: 0.91 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 34.9, cmp: 0.66, ypa: 7.56, pTD: 2.13, iNT: 0.33, rYd: 18.7, rTD: 0.28 },
+    { name: "Daniel Hill", pos: "RB", car: 5, ypc: 3.79, ruTD: 0.4, tgt: 2.6, cr: 0.72, ypr: 7.3, recTD: 0.07 },
+    { name: "Kevin Riley", pos: "RB", car: 3.9, ypc: 3.8, ruTD: 0.13, tgt: 1.8, cr: 0.72, ypr: 9.3, recTD: 0.07 },
+    { name: "Ryan Coleman-Williams", pos: "WR", tgt: 5.4, cr: 0.6, ypr: 14.1, recTD: 0.27, wr1: true },
+    { name: "Noah Rogers", pos: "WR", tgt: 3.7, cr: 0.6, ypr: 13.4, recTD: 0.13 },
+    { name: "Lotzeir Brooks", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 13.8, recTD: 0.13 },
+    { name: "Kaleb Edwards", pos: "TE", tgt: 1.1, cr: 0.65, ypr: 13.6, recTD: 0.07 } ] },
+  APP: { abbr: "APP", name: "App State", pace: 1.06, def: { pass: 1.15, run: 0.99, cb: 1.05 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 39.1, cmp: 0.59, ypa: 6.57, pTD: 1.77, iNT: 1.15, rYd: 23, rTD: 0.18 },
+    { name: "Jaquari Lewis", pos: "RB", car: 10.8, ypc: 4.41, ruTD: 0.46, tgt: 3.4, cr: 0.72, ypr: 6, recTD: 0 },
+    { name: "J'Marion Burnette", pos: "RB", car: 2.2, ypc: 2.93, ruTD: 0, tgt: 0.1, cr: 0.72, ypr: 16, recTD: 0.08 },
+    { name: "Chris Lofton", pos: "WR", tgt: 7.1, cr: 0.6, ypr: 16.7, recTD: 0.31, wr1: true },
+    { name: "Sam Pickett III", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 13.6, recTD: 0.15 },
+    { name: "Sam Mbake", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 8.6, recTD: 0.08 },
+    { name: "Darrin Fugitt", pos: "TE", tgt: 3.8, cr: 0.65, ypr: 10.7, recTD: 0.15 } ] },
+  ARIZ: { abbr: "ARIZ", name: "Arizona", pace: 1.04, def: { pass: 0.85, run: 0.95, cb: 0.9 }, players: [
+    { name: "Noah Fifita", pos: "QB", pAtt: 32.9, cmp: 0.64, ypa: 7.54, pTD: 2.23, iNT: 0.46, rYd: 16.6, rTD: 0.23 },
+    { name: "Ismail Mahdi", pos: "RB", car: 10.3, ypc: 6.41, ruTD: 0.31, tgt: 1.8, cr: 0.72, ypr: 7, recTD: 0.08 },
+    { name: "Antwan Roberts Jr.", pos: "RB", car: 6.9, ypc: 5.69, ruTD: 0.31, tgt: 0.7, cr: 0.72, ypr: 8.3, recTD: 0 },
+    { name: "Rodney Gallagher III", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 8.7, recTD: 0, wr1: true },
+    { name: "Chris Hunter III", pos: "WR", tgt: 3.5, cr: 0.6, ypr: 13.8, recTD: 0.15 },
+    { name: "Tre Spivey", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 16.6, recTD: 0.54 },
+    { name: "Cole Rusk", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 11.4, recTD: 0.08 } ] },
+  ARK: { abbr: "ARK", name: "Arkansas", pace: 0.98, def: { pass: 1.1, run: 1.15, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 31.8, cmp: 0.61, ypa: 8.28, pTD: 1.83, iNT: 0.92, rYd: 34.5, rTD: 0.42 },
+    { name: "Braylen Russell", pos: "RB", car: 4.6, ypc: 5.2, ruTD: 0.42, tgt: 0.5, cr: 0.72, ypr: 6.8, recTD: 0 },
+    { name: "Jasper Parker", pos: "RB", car: 2.1, ypc: 3.72, ruTD: 0.17, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Donovan Faupel", pos: "WR", tgt: 8.5, cr: 0.6, ypr: 10.8, recTD: 0.58, wr1: true },
+    { name: "Jamari Hawkins", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 16.4, recTD: 0.17 },
+    { name: "Chris Marshall", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 19.1, recTD: 0.17 },
+    { name: "Jaden Platt", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 14.1, recTD: 0.17 } ] },
+  ARMY: { abbr: "ARMY", name: "Army", pace: 1.01, def: { pass: 0.88, run: 1.02, cb: 0.97 }, players: [
+    { name: "Cale Hellums", pos: "QB", pAtt: 6.7, cmp: 0.54, ypa: 7.98, pTD: 0.31, iNT: 0.23, rYd: 94.1, rTD: 1.38 },
+    { name: "Brady Anderson", pos: "WR", tgt: 1.8, cr: 0.6, ypr: 24, recTD: 0.15, wr1: true },
+    { name: "Samari Howard", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 12.1, recTD: 0.08 } ] },
+  ARST: { abbr: "ARST", name: "Arkansas St", pace: 1.1, def: { pass: 1.13, run: 1.12, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 39.2, cmp: 0.66, ypa: 6.63, pTD: 1.54, iNT: 0.92, rYd: 22.2, rTD: 0.22 },
+    { name: "Kenyon Clay", pos: "RB", car: 10.7, ypc: 3.76, ruTD: 0.23, tgt: 4, cr: 0.72, ypr: 5.5, recTD: 0.23 },
+    { name: "Devin Spencer", pos: "RB", car: 8.3, ypc: 5.18, ruTD: 0.23, tgt: 2.7, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Chauncy Cobb", pos: "WR", tgt: 9.4, cr: 0.6, ypr: 10.9, recTD: 0.08, wr1: true },
+    { name: "Hunter Summers", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 11.5, recTD: 0.31 },
+    { name: "Jaylen Bonelli", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 9.1, recTD: 0.23 },
+    { name: "Joshua Burrell", pos: "TE", tgt: 4.3, cr: 0.65, ypr: 8.1, recTD: 0.15 } ] },
+  ASU: { abbr: "ASU", name: "Arizona St", pace: 1.07, def: { pass: 1.07, run: 0.85, cb: 0.93 }, players: [
+    { name: "Cutter Boley", pos: "QB", pAtt: 23.2, cmp: 0.66, ypa: 7.18, pTD: 1.15, iNT: 0.92, rYd: 6.5, rTD: 0.15 },
+    { name: "Marquis Gillis", pos: "RB", car: 14.2, ypc: 6.25, ruTD: 0.54, tgt: 1.2, cr: 0.72, ypr: 7.7, recTD: 0.08 },
+    { name: "David Avit", pos: "RB", car: 9.6, ypc: 5.5, ruTD: 0.62, tgt: 1, cr: 0.72, ypr: 9.3, recTD: 0 },
+    { name: "Omarion Miller", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 18, recTD: 0.62, wr1: true },
+    { name: "Reed Harris", pos: "WR", tgt: 5, cr: 0.6, ypr: 17.3, recTD: 0.38 },
+    { name: "Raiden Vines-Bright", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 9.9, recTD: 0.08 },
+    { name: "Kristian Ingman", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 14.9, recTD: 0 } ] },
+  AUB: { abbr: "AUB", name: "Auburn", pace: 1.02, def: { pass: 1.06, run: 0.85, cb: 1.02 }, players: [
+    { name: "Byrum Brown", pos: "QB", pAtt: 28.4, cmp: 0.66, ypa: 9.26, pTD: 2.33, iNT: 0.58, rYd: 84, rTD: 1.17 },
+    { name: "Jeremiah Cobb", pos: "RB", car: 14.6, ypc: 5.54, ruTD: 0.42, tgt: 1.3, cr: 0.72, ypr: 7.5, recTD: 0 },
+    { name: "Tae Meadows", pos: "RB", car: 13.3, ypc: 4.37, ruTD: 0.5, tgt: 1.3, cr: 0.72, ypr: 5.8, recTD: 0 },
+    { name: "Keshaun Singleton", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 17.5, recTD: 0.67, wr1: true },
+    { name: "Jeremiah Koger", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 15.7, recTD: 0.67 },
+    { name: "Christian Neptune", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 8.8, recTD: 0.08 },
+    { name: "Jake Johnson", pos: "TE", tgt: 2.1, cr: 0.65, ypr: 9, recTD: 0.08 } ] },
+  BALL: { abbr: "BALL", name: "Ball State", pace: 0.91, def: { pass: 1.04, run: 1.15, cb: 1.09 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 23.2, cmp: 0.56, ypa: 6.04, pTD: 1, iNT: 0.67, rYd: 23.7, rTD: 0.17 },
+    { name: "TJ Horton", pos: "RB", car: 5, ypc: 3, ruTD: 0, tgt: 1.7, cr: 0.72, ypr: 4.7, recTD: 0.08 },
+    { name: "Jalen Bonds", pos: "RB", car: 2.3, ypc: 2.85, ruTD: 0.08, tgt: 0.2, cr: 0.72, ypr: 16, recTD: 0 },
+    { name: "CJ Nelson", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 17.9, recTD: 0.25, wr1: true },
+    { name: "Donovan Hamilton", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 12.2, recTD: 0 },
+    { name: "Jabari Smith", pos: "WR", tgt: 2.1, cr: 0.6, ypr: 11.1, recTD: 0.25 } ] },
+  BAY: { abbr: "BAY", name: "Baylor", pace: 1.1, def: { pass: 0.9, run: 1.15, cb: 0.96 }, players: [
+    { name: "DJ Lagway", pos: "QB", pAtt: 28.1, cmp: 0.63, ypa: 6.72, pTD: 1.33, iNT: 1.17, rYd: 11.3, rTD: 0.08 },
+    { name: "Caden Knighten", pos: "RB", car: 8.7, ypc: 4.51, ruTD: 0.08, tgt: 1.3, cr: 0.72, ypr: 12.2, recTD: 0.08 },
+    { name: "Gavin Freeman", pos: "WR", tgt: 7.4, cr: 0.6, ypr: 9.1, recTD: 0.33, wr1: true },
+    { name: "Dre'lon Miller", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 7.9, recTD: 0.08 },
+    { name: "Jadon Porter", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 9.4, recTD: 0.08 },
+    { name: "Tony Livingston", pos: "TE", tgt: 1.4, cr: 0.65, ypr: 10.8, recTD: 0.17 } ] },
+  BC: { abbr: "BC", name: "Boston College", pace: 1.03, def: { pass: 1.15, run: 1.15, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 37.8, cmp: 0.63, ypa: 7.41, pTD: 1.67, iNT: 1, rYd: 18.7, rTD: 0.27 },
+    { name: "Evan Dickens", pos: "RB", car: 19.1, ypc: 5.85, ruTD: 1.33, tgt: 0.6, cr: 0.72, ypr: 12.2, recTD: 0.08 },
+    { name: "Nolan Ray", pos: "RB", car: 5.6, ypc: 4.31, ruTD: 0.17, tgt: 1.3, cr: 0.72, ypr: 4.5, recTD: 0 },
+    { name: "Javarius Green", pos: "WR", tgt: 1.8, cr: 0.6, ypr: 11.5, recTD: 0, wr1: true },
+    { name: "Dawson Pough", pos: "WR", tgt: 1.8, cr: 0.6, ypr: 15.2, recTD: 0.08 },
+    { name: "Kaelan Chudzinski", pos: "TE", tgt: 3.1, cr: 0.65, ypr: 13, recTD: 0.33 } ] },
+  BGSU: { abbr: "BGSU", name: "Bowling Green", pace: 0.94, def: { pass: 0.93, run: 0.94, cb: 1.07 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 23.8, cmp: 0.58, ypa: 6.35, pTD: 1.08, iNT: 1, rYd: 28, rTD: 0.22 },
+    { name: "Ke'Marion Baldwin", pos: "RB", car: 13.3, ypc: 4.89, ruTD: 0.5, tgt: 0.9, cr: 0.72, ypr: 4.8, recTD: 0 },
+    { name: "Austyn Dendy", pos: "RB", car: 9, ypc: 4.56, ruTD: 0.42, tgt: 0.5, cr: 0.72, ypr: 16, recTD: 0.08 },
+    { name: "Isaiah Dawson", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 13.7, recTD: 0.33, wr1: true },
+    { name: "Nick Sowell", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 11.8, recTD: 0.08 },
+    { name: "Winn Sharp", pos: "WR", tgt: 0.7, cr: 0.6, ypr: 9.2, recTD: 0 } ] },
+  BOIS: { abbr: "BOIS", name: "Boise St", pace: 1.1, def: { pass: 0.85, run: 1.08, cb: 0.9 }, players: [
+    { name: "Maddux Madsen", pos: "QB", pAtt: 21.6, cmp: 0.58, ypa: 7.73, pTD: 1.29, iNT: 0.64, rYd: 5.8, rTD: 0.29 },
+    { name: "Dylan Riley", pos: "RB", car: 13.9, ypc: 5.77, ruTD: 0.71, tgt: 1.5, cr: 0.72, ypr: 9.9, recTD: 0.14 },
+    { name: "Sire Gaines", pos: "RB", car: 11.5, ypc: 5.04, ruTD: 0.57, tgt: 1.1, cr: 0.72, ypr: 6.5, recTD: 0.07 },
+    { name: "Darren Morris", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 18.8, recTD: 0.29, wr1: true },
+    { name: "Ben Ford", pos: "WR", tgt: 2.5, cr: 0.6, ypr: 15.5, recTD: 0.36 },
+    { name: "Cam Bates", pos: "WR", tgt: 2, cr: 0.6, ypr: 17.8, recTD: 0.07 } ] },
+  BUFF: { abbr: "BUFF", name: "Buffalo", pace: 1.03, def: { pass: 0.86, run: 1.05, cb: 0.92 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 34.3, cmp: 0.57, ypa: 6.67, pTD: 1.58, iNT: 1.17, rYd: 23.8, rTD: 0.25 },
+    { name: "Terrance Shelton Jr.", pos: "RB", car: 4.8, ypc: 4.28, ruTD: 0.08, tgt: 0.9, cr: 0.72, ypr: 5.3, recTD: 0 },
+    { name: "James McNeil Jr.", pos: "RB", car: 1, ypc: 5.58, ruTD: 0.17, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Jasaiah Gathings", pos: "WR", tgt: 5, cr: 0.6, ypr: 11.4, recTD: 0.25, wr1: true },
+    { name: "Patrick Clacks III", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 5.9, recTD: 0.17 },
+    { name: "Chance Morrow", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 16.1, recTD: 0.17 } ] },
+  BYU: { abbr: "BYU", name: "BYU", pace: 1, def: { pass: 0.96, run: 0.85, cb: 0.92 }, players: [
+    { name: "Bear Bachmeier", pos: "QB", pAtt: 27.6, cmp: 0.65, ypa: 7.84, pTD: 1.07, iNT: 0.5, rYd: 37.6, rTD: 0.79 },
+    { name: "LJ Martin", pos: "RB", car: 16.9, ypc: 5.53, ruTD: 0.86, tgt: 3.6, cr: 0.72, ypr: 7.1, recTD: 0 },
+    { name: "Jovesa Damuni", pos: "RB", car: 1.4, ypc: 5.84, ruTD: 0.07, tgt: 0.6, cr: 0.72, ypr: 7.3, recTD: 0 },
+    { name: "Jojo Phillips", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 11.5, recTD: 0, wr1: true },
+    { name: "Tiger Bachmeier", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 8.4, recTD: 0 },
+    { name: "Walker Lyons", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 11.2, recTD: 0.14 } ] },
+  CAL: { abbr: "CAL", name: "California", pace: 1.02, def: { pass: 0.94, run: 1.04, cb: 0.9 }, players: [
+    { name: "Jaron-Keawe Sagapolutele", pos: "QB", pAtt: 37.8, cmp: 0.64, ypa: 7.02, pTD: 1.38, iNT: 0.69, rYd: -9.2, rTD: 0.31 },
+    { name: "Ashten Emory", pos: "RB", car: 9.2, ypc: 4.78, ruTD: 0.31, tgt: 1.7, cr: 0.72, ypr: 6.4, recTD: 0.15 },
+    { name: "Adam Mohammed", pos: "RB", car: 8.2, ypc: 4.93, ruTD: 0.38, tgt: 1.8, cr: 0.72, ypr: 8.1, recTD: 0 },
+    { name: "Chase Hendricks", pos: "WR", tgt: 9.1, cr: 0.6, ypr: 14.6, recTD: 0.54, wr1: true },
+    { name: "Ian Strong", pos: "WR", tgt: 6.7, cr: 0.6, ypr: 14.7, recTD: 0.38 },
+    { name: "Jordan King", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 12.1, recTD: 0.15 },
+    { name: "Dorian Thomas", pos: "TE", tgt: 6.6, cr: 0.65, ypr: 10, recTD: 0.31 } ] },
+  CCU: { abbr: "CCU", name: "Coastal", pace: 1, def: { pass: 1.08, run: 1.15, cb: 1.05 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.7, cmp: 0.55, ypa: 5.52, pTD: 1.23, iNT: 1, rYd: 28.1, rTD: 0.23 },
+    { name: "Kente Edwards", pos: "RB", car: 15.3, ypc: 7.31, ruTD: 1.54, tgt: 1.1, cr: 0.72, ypr: 6.7, recTD: 0 },
+    { name: "Dominic Lee-Knicely", pos: "RB", car: 5.2, ypc: 5.71, ruTD: 0.23, tgt: 1.3, cr: 0.72, ypr: 8.3, recTD: 0.08 },
+    { name: "Tristian Gardner", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 15.5, recTD: 0.46, wr1: true },
+    { name: "Goldie Lawrence", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 14.9, recTD: 0.15 },
+    { name: "Robby Washington", pos: "WR", tgt: 3.7, cr: 0.6, ypr: 9.6, recTD: 0.23 },
+    { name: "Cyrus Ellison", pos: "TE", tgt: 1.7, cr: 0.65, ypr: 11.4, recTD: 0.08 } ] },
+  CIN: { abbr: "CIN", name: "Cincinnati", pace: 0.9, def: { pass: 1.01, run: 1.15, cb: 1.04 }, players: [
+    { name: "JC French IV", pos: "QB", pAtt: 29.9, cmp: 0.64, ypa: 7.53, pTD: 1.54, iNT: 0.62, rYd: 24.2, rTD: 0.46 },
+    { name: "Zylan Perry", pos: "RB", car: 10.6, ypc: 4.99, ruTD: 0.62, tgt: 1.7, cr: 0.72, ypr: 6.6, recTD: 0 },
+    { name: "Cole Tabb", pos: "RB", car: 8.8, ypc: 3.9, ruTD: 0.23, tgt: 0.4, cr: 0.72, ypr: 5.5, recTD: 0 },
+    { name: "Malachi Henry", pos: "WR", tgt: 8.8, cr: 0.6, ypr: 12.9, recTD: 0.77, wr1: true },
+    { name: "Larenzo Fenner", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 22.8, recTD: 1.15 },
+    { name: "JV Gibson", pos: "WR", tgt: 2.3, cr: 0.6, ypr: 11.1, recTD: 0.08 } ] },
+  CLEM: { abbr: "CLEM", name: "Clemson", pace: 1.02, def: { pass: 1.15, run: 0.85, cb: 0.95 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 36.5, cmp: 0.65, ypa: 7.33, pTD: 1.69, iNT: 0.54, rYd: 22.4, rTD: 0.31 },
+    { name: "Chris Johnson Jr.", pos: "RB", car: 5.2, ypc: 7.15, ruTD: 0.31, tgt: 1.8, cr: 0.72, ypr: 10.6, recTD: 0.08 },
+    { name: "Gideon Davidson", pos: "RB", car: 4.6, ypc: 4.33, ruTD: 0, tgt: 1.2, cr: 0.72, ypr: 8.5, recTD: 0 },
+    { name: "T.J. Moore", pos: "WR", tgt: 6.7, cr: 0.6, ypr: 16.1, recTD: 0.31, wr1: true },
+    { name: "Tristan Smith", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 10, recTD: 0.08 },
+    { name: "Tyler Brown", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 8.7, recTD: 0 },
+    { name: "Christian Bentancur", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 10.8, recTD: 0.23 } ] },
+  CLT: { abbr: "CLT", name: "Charlotte", pace: 0.93, def: { pass: 1.15, run: 1.15, cb: 1.1 }, players: [
+    { name: "Grayson Loftis", pos: "QB", pAtt: 19.3, cmp: 0.55, ypa: 6.1, pTD: 0.67, iNT: 0.67, rYd: -7.2, rTD: 0 },
+    { name: "Jariel Cobb", pos: "RB", car: 4.3, ypc: 3.73, ruTD: 0, tgt: 0.9, cr: 0.72, ypr: 6.1, recTD: 0 },
+    { name: "Khamani Alexander", pos: "RB", car: 1, ypc: 4.17, ruTD: 0, tgt: 0.2, cr: 0.72, ypr: 8.5, recTD: 0 },
+    { name: "Cam Pedro", pos: "WR", tgt: 9, cr: 0.6, ypr: 12.5, recTD: 0.33, wr1: true },
+    { name: "Jaden Barnes", pos: "WR", tgt: 7.6, cr: 0.6, ypr: 11.1, recTD: 0.58 },
+    { name: "Zyheem Collick", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 19.1, recTD: 0.33 },
+    { name: "Logan Mauldin", pos: "TE", tgt: 3.3, cr: 0.65, ypr: 13.1, recTD: 0.17 } ] },
+  CMU: { abbr: "CMU", name: "C Michigan", pace: 0.92, def: { pass: 0.96, run: 0.97, cb: 0.94 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 19.6, cmp: 0.69, ypa: 8.52, pTD: 1.23, iNT: 0.54, rYd: 29.4, rTD: 0.26 },
+    { name: "Jayden Clerveaux", pos: "RB", car: 12.4, ypc: 4.73, ruTD: 0.38, tgt: 0.6, cr: 0.72, ypr: 6.2, recTD: 0 },
+    { name: "Brock Townsend", pos: "RB", car: 6.3, ypc: 5.1, ruTD: 0.31, tgt: 1.4, cr: 0.72, ypr: 11.2, recTD: 0.31 },
+    { name: "Langston Lewis", pos: "WR", tgt: 5.5, cr: 0.6, ypr: 13.9, recTD: 0.23, wr1: true },
+    { name: "Tommy McIntosh", pos: "WR", tgt: 4, cr: 0.6, ypr: 13.6, recTD: 0.23 },
+    { name: "Justin Ruffin Jr.", pos: "WR", tgt: 0.9, cr: 0.6, ypr: 9, recTD: 0 },
+    { name: "Jaden Allen", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 9.8, recTD: 0.08 } ] },
+  COLO: { abbr: "COLO", name: "Colorado", pace: 0.98, def: { pass: 0.93, run: 1.15, cb: 1.07 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 29.8, cmp: 0.59, ypa: 6.8, pTD: 1.42, iNT: 0.92, rYd: 22.6, rTD: 0.25 },
+    { name: "Micah Welch", pos: "RB", car: 8, ypc: 4, ruTD: 0.33, tgt: 1.3, cr: 0.72, ypr: 3.4, recTD: 0 },
+    { name: "Damian Henderson II", pos: "RB", car: 7.6, ypc: 6.21, ruTD: 0.42, tgt: 0.8, cr: 0.72, ypr: 9.3, recTD: 0 },
+    { name: "Danny Scudero", pos: "WR", tgt: 12.2, cr: 0.6, ypr: 14.7, recTD: 0.83, wr1: true },
+    { name: "Kam Perry", pos: "WR", tgt: 6, cr: 0.6, ypr: 22.7, recTD: 0.5 },
+    { name: "DeAndre Moore Jr.", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 14, recTD: 0.33 },
+    { name: "Zach Atkins", pos: "TE", tgt: 2.6, cr: 0.65, ypr: 7.5, recTD: 0 } ] },
+  CONN: { abbr: "CONN", name: "UConn", pace: 0.99, def: { pass: 1, run: 1.15, cb: 1.02 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 34.8, cmp: 0.68, ypa: 8.16, pTD: 2.31, iNT: 0.08, rYd: 29, rTD: 0.4 },
+    { name: "Kenji Christian", pos: "RB", car: 8.1, ypc: 5.03, ruTD: 0.31, tgt: 1.8, cr: 0.72, ypr: 11.4, recTD: 0.08 },
+    { name: "Trey Cornist", pos: "RB", car: 8.1, ypc: 4.48, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Shamar Porter", pos: "WR", tgt: 2.3, cr: 0.6, ypr: 13, recTD: 0.08, wr1: true },
+    { name: "Cam Abshire", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 9.2, recTD: 0 },
+    { name: "Emanuel Ross", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 11, recTD: 0.08 } ] },
+  CSU: { abbr: "CSU", name: "Colorado St", pace: 0.94, def: { pass: 1.02, run: 1.15, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 32.8, cmp: 0.62, ypa: 6.58, pTD: 1.25, iNT: 1, rYd: 19.5, rTD: 0.22 },
+    { name: "Mel Brown", pos: "RB", car: 2.7, ypc: 8, ruTD: 0.17, tgt: 0.5, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Oliver Lundberg", pos: "RB", car: 1.9, ypc: 6, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Tommy Maher", pos: "WR", tgt: 4.4, cr: 0.6, ypr: 11.2, recTD: 0, wr1: true },
+    { name: "Lavon Brown", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 11.1, recTD: 0 },
+    { name: "Jackson Harper", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 6.4, recTD: 0.08 } ] },
+  DEL: { abbr: "DEL", name: "Delaware", pace: 1.09, def: { pass: 1.13, run: 1.06, cb: 1.05 }, players: [
+    { name: "Nick Minicucci", pos: "QB", pAtt: 39.4, cmp: 0.63, ypa: 7.19, pTD: 1.77, iNT: 0.54, rYd: 18.1, rTD: 0.77 },
+    { name: "Jo Silver", pos: "RB", car: 9.2, ypc: 5.48, ruTD: 0.38, tgt: 3.1, cr: 0.72, ypr: 7.7, recTD: 0.08 },
+    { name: "Viron Ellison Jr.", pos: "RB", car: 9.1, ypc: 3.9, ruTD: 0.31, tgt: 2.2, cr: 0.72, ypr: 9.1, recTD: 0.15 },
+    { name: "Bryson Graves", pos: "WR", tgt: 4.5, cr: 0.6, ypr: 9.4, recTD: 0.15, wr1: true },
+    { name: "Donovan Lewis", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 11, recTD: 0.08 },
+    { name: "Elijah Sessoms", pos: "TE", tgt: 2.6, cr: 0.65, ypr: 8.6, recTD: 0.15 } ] },
+  DUKE: { abbr: "DUKE", name: "Duke", pace: 1.03, def: { pass: 1.15, run: 0.98, cb: 1.1 }, players: [
+    { name: "Walker Eget", pos: "QB", pAtt: 28.1, cmp: 0.59, ypa: 7.76, pTD: 1.21, iNT: 0.64, rYd: 6.9, rTD: 0 },
+    { name: "Nate Sheppard", pos: "RB", car: 14.3, ypc: 5.66, ruTD: 0.79, tgt: 3.7, cr: 0.72, ypr: 7.7, recTD: 0.07 },
+    { name: "Wilhelm Daal II", pos: "RB", car: 5.7, ypc: 5.49, ruTD: 0.14, tgt: 1.1, cr: 0.72, ypr: 4.6, recTD: 0 },
+    { name: "Jared Richardson", pos: "WR", tgt: 9.5, cr: 0.6, ypr: 12.9, recTD: 0.86, wr1: true },
+    { name: "Javen Nicholas", pos: "WR", tgt: 7.1, cr: 0.6, ypr: 12.3, recTD: 0.36 },
+    { name: "Jonah Burton", pos: "WR", tgt: 2.5, cr: 0.6, ypr: 11.1, recTD: 0 },
+    { name: "Jeremiah Hasley", pos: "TE", tgt: 4.4, cr: 0.65, ypr: 11.4, recTD: 0.43 } ] },
+  ECU: { abbr: "ECU", name: "East Carolina", pace: 1.1, def: { pass: 1.06, run: 0.85, cb: 0.93 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 33.8, cmp: 0.65, ypa: 8.06, pTD: 1.69, iNT: 0.46, rYd: 31.7, rTD: 0.48 },
+    { name: "Michael Allen", pos: "RB", car: 5.9, ypc: 5, ruTD: 0.31, tgt: 1.3, cr: 0.72, ypr: 11.6, recTD: 0.08 },
+    { name: "TJ Engleman Jr.", pos: "RB", car: 4.5, ypc: 5.19, ruTD: 0.08, tgt: 0.7, cr: 0.72, ypr: 5.3, recTD: 0 },
+    { name: "Ja'Keith Hamilton", pos: "WR", tgt: 5.1, cr: 0.6, ypr: 13.6, recTD: 0.38, wr1: true },
+    { name: "Jaquaize Pettaway", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 4, recTD: 0 },
+    { name: "Tyler Johnson", pos: "WR", tgt: 0.9, cr: 0.6, ypr: 10.3, recTD: 0 },
+    { name: "Kanen Hamlett", pos: "TE", tgt: 1.5, cr: 0.65, ypr: 10.9, recTD: 0.15 } ] },
+  EMU: { abbr: "EMU", name: "E Michigan", pace: 0.99, def: { pass: 0.85, run: 1.15, cb: 1.06 }, players: [
+    { name: "Noah Kim", pos: "QB", pAtt: 33.5, cmp: 0.61, ypa: 7.01, pTD: 1.5, iNT: 0.92, rYd: 15.5, rTD: 0.5 },
+    { name: "Nick Devereaux", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 15, recTD: 0.58, wr1: true },
+    { name: "Benson Prosper", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 8.4, recTD: 0 },
+    { name: "Harold Mack", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 16.7, recTD: 0.17 },
+    { name: "Joshua Long", pos: "TE", tgt: 4.7, cr: 0.65, ypr: 9.6, recTD: 0.25 } ] },
+  FAU: { abbr: "FAU", name: "FAU", pace: 1.1, def: { pass: 1.08, run: 1.15, cb: 1.08 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 48.5, cmp: 0.66, ypa: 7.01, pTD: 2.33, iNT: 1.67, rYd: 18.8, rTD: 0.22 },
+    { name: "Kaden Shields-Dutton", pos: "RB", car: 7, ypc: 5.48, ruTD: 0.5, tgt: 2, cr: 0.72, ypr: 6.4, recTD: 0.08 },
+    { name: "Easton Messer", pos: "WR", tgt: 14.4, cr: 0.6, ypr: 10.1, recTD: 0.5, wr1: true },
+    { name: "Dominique Henry", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 14.4, recTD: 0.33 },
+    { name: "RJ Garcia II", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 10.5, recTD: 0 },
+    { name: "AJ Johnson", pos: "TE", tgt: 2.6, cr: 0.65, ypr: 11.6, recTD: 0.42 } ] },
+  FIU: { abbr: "FIU", name: "FIU", pace: 1.05, def: { pass: 1.15, run: 1.08, cb: 1 }, players: [
+    { name: "JJ Kohl", pos: "QB", pAtt: 16.6, cmp: 0.62, ypa: 6.78, pTD: 0.92, iNT: 0.15, rYd: 3.8, rTD: 0.08 },
+    { name: "Anthony Carrie", pos: "RB", car: 7.9, ypc: 4.55, ruTD: 0.38, tgt: 1.1, cr: 0.72, ypr: 5.5, recTD: 0 },
+    { name: "Devonte Lyons", pos: "RB", car: 2.8, ypc: 3.84, ruTD: 0.08, tgt: 1.3, cr: 0.72, ypr: 5.4, recTD: 0 },
+    { name: "Greg Gaines III", pos: "WR", tgt: 8.3, cr: 0.6, ypr: 15.7, recTD: 0.31, wr1: true },
+    { name: "Kyle McNeal", pos: "WR", tgt: 4, cr: 0.6, ypr: 10, recTD: 0.08 },
+    { name: "Maguire Anderson", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 11.2, recTD: 0.08 },
+    { name: "Jackson Verdugo", pos: "TE", tgt: 1.2, cr: 0.65, ypr: 10.1, recTD: 0.08 } ] },
+  FLA: { abbr: "FLA", name: "Florida", pace: 0.95, def: { pass: 1.02, run: 1.03, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 31.2, cmp: 0.63, ypa: 6.56, pTD: 1.5, iNT: 1.17, rYd: 24.6, rTD: 0.17 },
+    { name: "Jadan Baugh", pos: "RB", car: 18.3, ypc: 5.32, ruTD: 0.67, tgt: 3.8, cr: 0.72, ypr: 6.4, recTD: 0.17 },
+    { name: "London Montgomery", pos: "RB", car: 13, ypc: 4.76, ruTD: 0.58, tgt: 1.7, cr: 0.72, ypr: 5.1, recTD: 0 },
+    { name: "Vernell Brown III", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 12.8, recTD: 0, wr1: true },
+    { name: "Micah Mays Jr.", pos: "WR", tgt: 2.5, cr: 0.6, ypr: 16.8, recTD: 0.17 },
+    { name: "TJ Abrams", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 14.4, recTD: 0 },
+    { name: "Evan Chieca", pos: "TE", tgt: 4, cr: 0.65, ypr: 8.2, recTD: 0.33 } ] },
+  FRES: { abbr: "FRES", name: "Fresno St", pace: 0.99, def: { pass: 0.85, run: 0.88, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 28.7, cmp: 0.64, ypa: 6.39, pTD: 1.08, iNT: 1, rYd: 30.7, rTD: 0.34 },
+    { name: "Bryson Donelson", pos: "RB", car: 10.8, ypc: 4.29, ruTD: 0.38, tgt: 1.8, cr: 0.72, ypr: 6.3, recTD: 0 },
+    { name: "Rayshon Luke", pos: "RB", car: 8.6, ypc: 6.27, ruTD: 0.46, tgt: 3.8, cr: 0.72, ypr: 6.3, recTD: 0.15 },
+    { name: "Josiah Freeman", pos: "WR", tgt: 6.7, cr: 0.6, ypr: 12.3, recTD: 0.46, wr1: true },
+    { name: "Ezekiel Avit", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 9.1, recTD: 0 },
+    { name: "Jahlil McClain", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 13, recTD: 0.08 },
+    { name: "Jake Appleget", pos: "TE", tgt: 0.8, cr: 0.65, ypr: 8.1, recTD: 0.08 } ] },
+  FSU: { abbr: "FSU", name: "Florida St", pace: 1.05, def: { pass: 0.88, run: 0.92, cb: 0.99 }, players: [
+    { name: "Dean DeNobile", pos: "QB", pAtt: 28.9, cmp: 0.64, ypa: 7.29, pTD: 1.58, iNT: 0.58, rYd: -0.1, rTD: 0.17 },
+    { name: "Gemari Sands", pos: "RB", car: 8.8, ypc: 4.43, ruTD: 0, tgt: 4.6, cr: 0.72, ypr: 5.4, recTD: 0 },
+    { name: "Ousmane Kromah", pos: "RB", car: 6, ypc: 5.67, ruTD: 0, tgt: 1, cr: 0.72, ypr: 16, recTD: 0.08 },
+    { name: "Duce Robinson", pos: "WR", tgt: 7.8, cr: 0.6, ypr: 19.3, recTD: 0.5, wr1: true },
+    { name: "Micahi Danzy", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 21.1, recTD: 0.25 },
+    { name: "Jayvan Boggs", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 11.4, recTD: 0.08 },
+    { name: "Desirrio Riles", pos: "TE", tgt: 3.6, cr: 0.65, ypr: 12.9, recTD: 0.17 } ] },
+  GASO: { abbr: "GASO", name: "GA Southern", pace: 1.03, def: { pass: 1.11, run: 1.15, cb: 1.06 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 33.2, cmp: 0.63, ypa: 7.44, pTD: 2, iNT: 0.69, rYd: 27.7, rTD: 0.28 },
+    { name: "David Mbadinga", pos: "RB", car: 3.8, ypc: 4, ruTD: 0.08, tgt: 0.5, cr: 0.72, ypr: 3.6, recTD: 0 },
+    { name: "Terrance Gibbs", pos: "RB", car: 1.3, ypc: 3.59, ruTD: 0.08, tgt: 0.7, cr: 0.72, ypr: 9.7, recTD: 0 },
+    { name: "Taylor Bradshaw", pos: "WR", tgt: 2.1, cr: 0.6, ypr: 8.2, recTD: 0.08, wr1: true },
+    { name: "Josh Dallas", pos: "WR", tgt: 1, cr: 0.6, ypr: 8.5, recTD: 0 } ] },
+  GAST: { abbr: "GAST", name: "Georgia St", pace: 1.05, def: { pass: 1.11, run: 1.15, cb: 1.1 }, players: [
+    { name: "Ayden Pereira", pos: "QB", pAtt: 25.8, cmp: 0.51, ypa: 5.95, pTD: 0.75, iNT: 0.58, rYd: 71.3, rTD: 0.58 },
+    { name: "Savion Hart", pos: "RB", car: 14.6, ypc: 4.66, ruTD: 0.83, tgt: 1.7, cr: 0.72, ypr: 15, recTD: 0.17 },
+    { name: "Dennis Murray Jr.", pos: "RB", car: 1.1, ypc: 4.08, ruTD: 0, tgt: 1.5, cr: 0.72, ypr: 7.6, recTD: 0.08 },
+    { name: "Owen Dupree", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 11.9, recTD: 0.33, wr1: true },
+    { name: "DJ Riles", pos: "WR", tgt: 2.2, cr: 0.6, ypr: 11, recTD: 0.08 },
+    { name: "Grant Hollier", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 13.7, recTD: 0.33 } ] },
+  GT: { abbr: "GT", name: "Georgia Tech", pace: 0.99, def: { pass: 1.08, run: 1.09, cb: 1.06 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.3, cmp: 0.7, ypa: 8.66, pTD: 1.23, iNT: 0.54, rYd: 35.5, rTD: 0.48 },
+    { name: "Justice Haynes", pos: "RB", car: 9.3, ypc: 7.08, ruTD: 0.77, tgt: 1.4, cr: 0.72, ypr: 3.8, recTD: 0 },
+    { name: "Malachi Hosley", pos: "RB", car: 7.5, ypc: 7.11, ruTD: 0.54, tgt: 1.5, cr: 0.72, ypr: 8.5, recTD: 0 },
+    { name: "Isaiah Fuhrmann", pos: "WR", tgt: 5.9, cr: 0.6, ypr: 19.7, recTD: 0.69, wr1: true },
+    { name: "Jordan Allen", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 13.8, recTD: 0 },
+    { name: "Chris Corbo", pos: "TE", tgt: 5.3, cr: 0.65, ypr: 11.5, recTD: 0.31 } ] },
+  HAW: { abbr: "HAW", name: "Hawai'i", pace: 1.05, def: { pass: 1.04, run: 0.89, cb: 1.06 }, players: [
+    { name: "Micah Alejado", pos: "QB", pAtt: 33.1, cmp: 0.66, ypa: 7.22, pTD: 1.85, iNT: 0.69, rYd: 8.1, rTD: 0.08 },
+    { name: "Cam Barfield", pos: "RB", car: 6.2, ypc: 4.64, ruTD: 0.31, tgt: 2.9, cr: 0.72, ypr: 9.5, recTD: 0.23 },
+    { name: "DeVon Rice", pos: "RB", car: 2, ypc: 3.62, ruTD: 0.23, tgt: 0.3, cr: 0.72, ypr: 11, recTD: 0 },
+    { name: "Pofele Ashlock", pos: "WR", tgt: 9.7, cr: 0.6, ypr: 10.9, recTD: 0.62, wr1: true },
+    { name: "Blaze Kamoku", pos: "WR", tgt: 1.2, cr: 0.6, ypr: 9.8, recTD: 0.08 },
+    { name: "Carson Brown", pos: "WR", tgt: 0.9, cr: 0.6, ypr: 11.9, recTD: 0 },
+    { name: "Devon Tauaefa", pos: "TE", tgt: 1.7, cr: 0.65, ypr: 7.6, recTD: 0 } ] },
+  HOU: { abbr: "HOU", name: "Houston", pace: 1.06, def: { pass: 1.01, run: 0.86, cb: 1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 29, cmp: 0.64, ypa: 7.46, pTD: 2, iNT: 0.77, rYd: 32.1, rTD: 0.26 },
+    { name: "DJ Butler", pos: "RB", car: 5.2, ypc: 4.43, ruTD: 0, tgt: 0.9, cr: 0.72, ypr: 7.3, recTD: 0 },
+    { name: "Makhi Hughes", pos: "RB", car: 1.3, ypc: 4.12, ruTD: 0, tgt: 0.2, cr: 0.72, ypr: 12, recTD: 0 },
+    { name: "Amare Thomas", pos: "WR", tgt: 8.6, cr: 0.6, ypr: 14.4, recTD: 0.92, wr1: true },
+    { name: "Stephon Johnson", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 21.2, recTD: 0.15 },
+    { name: "Harvey Broussard III", pos: "WR", tgt: 1.2, cr: 0.6, ypr: 14, recTD: 0.08 },
+    { name: "Patrick Overmyer", pos: "TE", tgt: 3.2, cr: 0.65, ypr: 12.7, recTD: 0.38 } ] },
+  ILL: { abbr: "ILL", name: "Illinois", pace: 0.95, def: { pass: 1, run: 0.85, cb: 0.94 }, players: [
+    { name: "Katin Houser", pos: "QB", pAtt: 31.4, cmp: 0.66, ypa: 8.09, pTD: 1.46, iNT: 0.46, rYd: 14.8, rTD: 0.69 },
+    { name: "Aidan Laughery", pos: "RB", car: 5.8, ypc: 5.09, ruTD: 0.23, tgt: 1, cr: 0.72, ypr: 6, recTD: 0 },
+    { name: "Alex Perry", pos: "WR", tgt: 7.2, cr: 0.6, ypr: 15, recTD: 0.69, wr1: true },
+    { name: "Jayshon Platt", pos: "WR", tgt: 5.9, cr: 0.6, ypr: 15.7, recTD: 0.38 },
+    { name: "Hudson Clement", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 12.6, recTD: 0.23 },
+    { name: "Kaden Feagin", pos: "TE", tgt: 1.9, cr: 0.65, ypr: 11.8, recTD: 0.15 } ] },
+  IOWA: { abbr: "IOWA", name: "Iowa", pace: 0.91, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 22, cmp: 0.63, ypa: 6.51, pTD: 0.92, iNT: 0.62, rYd: 31.8, rTD: 0.43 },
+    { name: "L.J. Phillips Jr.", pos: "RB", car: 22.7, ypc: 6.51, ruTD: 1.46, tgt: 3, cr: 0.72, ypr: 7, recTD: 0.08 },
+    { name: "Kamari Moulton", pos: "RB", car: 13.1, ypc: 5.16, ruTD: 0.38, tgt: 1.7, cr: 0.72, ypr: 6.1, recTD: 0 },
+    { name: "Tony Diaz", pos: "WR", tgt: 8.6, cr: 0.6, ypr: 13.1, recTD: 0.85, wr1: true },
+    { name: "Evan James", pos: "WR", tgt: 8.3, cr: 0.6, ypr: 12.2, recTD: 0.54 },
+    { name: "Reece Vander Zee", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 14.6, recTD: 0.15 },
+    { name: "Zach Ortwerth", pos: "TE", tgt: 1.1, cr: 0.65, ypr: 8.4, recTD: 0 } ] },
+  ISU: { abbr: "ISU", name: "Iowa State", pace: 1.03, def: { pass: 1, run: 0.92, cb: 0.96 }, players: [
+    { name: "Jaylen Raynor", pos: "QB", pAtt: 41.8, cmp: 0.66, ypa: 6.71, pTD: 1.58, iNT: 0.92, rYd: 35.3, rTD: 0.58 },
+    { name: "Cameron Pettaway", pos: "RB", car: 6, ypc: 5.07, ruTD: 0, tgt: 0.9, cr: 0.72, ypr: 16, recTD: 0.17 },
+    { name: "Arnold Barnes III", pos: "RB", car: 4.3, ypc: 4.25, ruTD: 0, tgt: 0.2, cr: 0.72, ypr: 8, recTD: 0 },
+    { name: "Cody Jackson", pos: "WR", tgt: 7.4, cr: 0.6, ypr: 15.1, recTD: 0.5, wr1: true },
+    { name: "Omari Hayes", pos: "WR", tgt: 5.4, cr: 0.6, ypr: 13.2, recTD: 0.08 },
+    { name: "Carter Pabst", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 18.7, recTD: 0.08 },
+    { name: "Tyler Fortenberry", pos: "TE", tgt: 4.1, cr: 0.65, ypr: 9.2, recTD: 0.17 } ] },
+  IU: { abbr: "IU", name: "Indiana", pace: 0.99, def: { pass: 0.87, run: 0.85, cb: 0.9 }, players: [
+    { name: "Josh Hoover", pos: "QB", pAtt: 25.8, cmp: 0.66, ypa: 8.41, pTD: 1.81, iNT: 0.81, rYd: 0.3, rTD: 0.13 },
+    { name: "Turbo Richard", pos: "RB", car: 9.1, ypc: 5.17, ruTD: 0.56, tgt: 2.6, cr: 0.72, ypr: 7.1, recTD: 0.13 },
+    { name: "Khobie Martin", pos: "RB", car: 4.9, ypc: 6.47, ruTD: 0.38, tgt: 0.1, cr: 0.72, ypr: 14, recTD: 0 },
+    { name: "Nick Marsh", pos: "WR", tgt: 6.1, cr: 0.6, ypr: 11.2, recTD: 0.38, wr1: true },
+    { name: "Shazz Preston", pos: "WR", tgt: 4.5, cr: 0.6, ypr: 16.8, recTD: 0.25 },
+    { name: "Charlie Becker", pos: "WR", tgt: 3.5, cr: 0.6, ypr: 20, recTD: 0.25 } ] },
+  JMU: { abbr: "JMU", name: "James Madison", pace: 1.06, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 27.5, cmp: 0.58, ypa: 7.68, pTD: 1.86, iNT: 0.71, rYd: 43.5, rTD: 0.54 },
+    { name: "Seth Cromwell", pos: "RB", car: 10.7, ypc: 4.31, ruTD: 0.64, tgt: 1.6, cr: 0.72, ypr: 4.1, recTD: 0 },
+    { name: "Nick Herman", pos: "RB", car: 10.3, ypc: 7.18, ruTD: 0.43, tgt: 1.3, cr: 0.72, ypr: 9.2, recTD: 0 },
+    { name: "Noah Grevious", pos: "WR", tgt: 6.2, cr: 0.6, ypr: 14.1, recTD: 0.21, wr1: true },
+    { name: "Jeremiah Harrison", pos: "WR", tgt: 4.5, cr: 0.6, ypr: 17.2, recTD: 0.36 },
+    { name: "Michael Scott", pos: "WR", tgt: 1, cr: 0.6, ypr: 10.6, recTD: 0.07 },
+    { name: "Cole Keller", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 10.3, recTD: 0.14 } ] },
+  JVST: { abbr: "JVST", name: "Jax State", pace: 1.04, def: { pass: 1.08, run: 0.96, cb: 1.04 }, players: [
+    { name: "Caden Creel", pos: "QB", pAtt: 15.1, cmp: 0.62, ypa: 7.18, pTD: 0.64, iNT: 0.29, rYd: 76.8, rTD: 0.5 },
+    { name: "Khristian Lando", pos: "RB", car: 3.6, ypc: 3.92, ruTD: 0.07, tgt: 0.3, cr: 0.72, ypr: 9.7, recTD: 0 },
+    { name: "Andrew Paul", pos: "RB", car: 2.1, ypc: 4.23, ruTD: 0.21, tgt: 0.2, cr: 0.72, ypr: 14.5, recTD: 0 },
+    { name: "Darius Cannon", pos: "WR", tgt: 9, cr: 0.6, ypr: 9.6, recTD: 0.21, wr1: true },
+    { name: "Ronnel Johnson", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 13.2, recTD: 0.14 },
+    { name: "Deondre Johnson", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 24, recTD: 0.43 } ] },
+  KENN: { abbr: "KENN", name: "Kennesaw St", pace: 1.03, def: { pass: 1.01, run: 1.15, cb: 1.03 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.2, cmp: 0.61, ypa: 8.04, pTD: 1.86, iNT: 0.79, rYd: 28.7, rTD: 0.29 },
+    { name: "Latrelle Murrell", pos: "RB", car: 12.6, ypc: 5.08, ruTD: 0.21, tgt: 2.2, cr: 0.72, ypr: 11.2, recTD: 0.29 },
+    { name: "Devaughn Slaughter", pos: "WR", tgt: 6.5, cr: 0.6, ypr: 10, recTD: 0.21, wr1: true },
+    { name: "Zion Booker", pos: "WR", tgt: 5.5, cr: 0.6, ypr: 9.1, recTD: 0.14 },
+    { name: "Brayden Munroe", pos: "WR", tgt: 5.5, cr: 0.6, ypr: 15.1, recTD: 0.21 },
+    { name: "Gerard Bullock Jr.", pos: "TE", tgt: 2.5, cr: 0.65, ypr: 6.8, recTD: 0.07 } ] },
+  KENT: { abbr: "KENT", name: "Kent State", pace: 0.9, def: { pass: 1.09, run: 1.15, cb: 1.03 }, players: [
+    { name: "Dru DeShields", pos: "QB", pAtt: 20, cmp: 0.57, ypa: 8.46, pTD: 1.5, iNT: 0.25, rYd: 3, rTD: 0.25 },
+    { name: "Donovan Delaney Jr.", pos: "RB", car: 1.3, ypc: 2.5, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Wayne Harris", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 10.9, recTD: 0.08, wr1: true },
+    { name: "Ardell Banks", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 17.1, recTD: 0.17 },
+    { name: "Terik Mulder", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 10.4, recTD: 0.33 } ] },
+  KSU: { abbr: "KSU", name: "Kansas St", pace: 0.93, def: { pass: 1.02, run: 1.09, cb: 0.96 }, players: [
+    { name: "Avery Johnson", pos: "QB", pAtt: 28.4, cmp: 0.6, ypa: 6.99, pTD: 1.5, iNT: 0.5, rYd: 39.8, rTD: 0.67 },
+    { name: "Joe Jackson", pos: "RB", car: 14.1, ypc: 5.39, ruTD: 0.67, tgt: 2.5, cr: 0.72, ypr: 5.4, recTD: 0.08 },
+    { name: "Rodney Fields Jr.", pos: "RB", car: 10.3, ypc: 4.95, ruTD: 0.08, tgt: 3.2, cr: 0.72, ypr: 9.9, recTD: 0.08 },
+    { name: "Josh Manning", pos: "WR", tgt: 4, cr: 0.6, ypr: 11, recTD: 0.17, wr1: true },
+    { name: "Adonis Moise", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 9.3, recTD: 0 },
+    { name: "Garrett Oakley", pos: "TE", tgt: 4.9, cr: 0.65, ypr: 10.2, recTD: 0.5 } ] },
+  KU: { abbr: "KU", name: "Kansas", pace: 0.97, def: { pass: 0.98, run: 1.15, cb: 1.02 }, players: [
+    { name: "Chase Jenkins", pos: "QB", pAtt: 14.3, cmp: 0.69, ypa: 5.96, pTD: 0.75, iNT: 0.17, rYd: 44.3, rTD: 0.42 },
+    { name: "Jalen Dupree", pos: "RB", car: 8.5, ypc: 4.98, ruTD: 0.17, tgt: 1.4, cr: 0.72, ypr: 6.9, recTD: 0 },
+    { name: "Dylan Edwards", pos: "RB", car: 2.8, ypc: 6.03, ruTD: 0.17, tgt: 0.3, cr: 0.72, ypr: 5.7, recTD: 0 },
+    { name: "Nik McMillan", pos: "WR", tgt: 8.6, cr: 0.6, ypr: 15.8, recTD: 0.25, wr1: true },
+    { name: "Cam Pickett", pos: "WR", tgt: 6.3, cr: 0.6, ypr: 10.6, recTD: 0.25 },
+    { name: "Nahzae Cox", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 11.8, recTD: 0.42 },
+    { name: "Carter Moses", pos: "TE", tgt: 3.3, cr: 0.65, ypr: 12.3, recTD: 0.17 } ] },
+  LIB: { abbr: "LIB", name: "Liberty", pace: 1.03, def: { pass: 0.9, run: 1.15, cb: 0.95 }, players: [
+    { name: "Ethan Vasko", pos: "QB", pAtt: 22.2, cmp: 0.57, ypa: 7.37, pTD: 0.83, iNT: 1, rYd: 21.5, rTD: 0.42 },
+    { name: "Terron Kellman", pos: "RB", car: 5.4, ypc: 5.09, ruTD: 0.33, tgt: 0.6, cr: 0.72, ypr: 10.4, recTD: 0 },
+    { name: "Kanye Udoh", pos: "RB", car: 4.7, ypc: 4.29, ruTD: 0.17, tgt: 0.1, cr: 0.72, ypr: 6, recTD: 0 },
+    { name: "Rashawn Cunningham", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 18.5, recTD: 0.58, wr1: true },
+    { name: "Jamari Person", pos: "WR", tgt: 3.9, cr: 0.6, ypr: 11.3, recTD: 0 },
+    { name: "Refeno Vangates", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 13.7, recTD: 0.25 } ] },
+  LOU: { abbr: "LOU", name: "Louisville", pace: 0.96, def: { pass: 0.87, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 32.2, cmp: 0.64, ypa: 6.86, pTD: 1.38, iNT: 0.69, rYd: 29.5, rTD: 0.38 },
+    { name: "Isaac Brown", pos: "RB", car: 7.8, ypc: 8, ruTD: 0.54, tgt: 1.4, cr: 0.72, ypr: 3.7, recTD: 0 },
+    { name: "Keyjuan Brown", pos: "RB", car: 7.4, ypc: 7.33, ruTD: 0.46, tgt: 1.3, cr: 0.72, ypr: 9.8, recTD: 0 },
+    { name: "Jackson Voth", pos: "WR", tgt: 6.5, cr: 0.6, ypr: 11.8, recTD: 0.38, wr1: true },
+    { name: "Tre Richardson", pos: "WR", tgt: 5.9, cr: 0.6, ypr: 17.5, recTD: 0.54 },
+    { name: "Lawayne McCoy", pos: "WR", tgt: 3.5, cr: 0.6, ypr: 14.7, recTD: 0.23 },
+    { name: "Brody Foley", pos: "TE", tgt: 4.4, cr: 0.65, ypr: 14.3, recTD: 0.54 } ] },
+  LSU: { abbr: "LSU", name: "LSU", pace: 0.94, def: { pass: 0.94, run: 0.85, cb: 0.91 }, players: [
+    { name: "Landen Clark", pos: "QB", pAtt: 21.3, cmp: 0.56, ypa: 8.38, pTD: 1.38, iNT: 0.62, rYd: 47.2, rTD: 0.85 },
+    { name: "Caden Durham", pos: "RB", car: 8.5, ypc: 4.55, ruTD: 0.23, tgt: 1.7, cr: 0.72, ypr: 5.7, recTD: 0 },
+    { name: "Harlem Berry", pos: "RB", car: 8, ypc: 4.72, ruTD: 0.15, tgt: 0.9, cr: 0.72, ypr: 4, recTD: 0 },
+    { name: "Jackson Harris", pos: "WR", tgt: 6.3, cr: 0.6, ypr: 19.7, recTD: 0.92, wr1: true },
+    { name: "Jayce Brown", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 17.4, recTD: 0.38 },
+    { name: "Tre' Brown", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 20.1, recTD: 0.31 },
+    { name: "Trey'Dez Green", pos: "TE", tgt: 3.9, cr: 0.65, ypr: 13.1, recTD: 0.54 } ] },
+  LT: { abbr: "LT", name: "Louisiana Tech", pace: 0.98, def: { pass: 1.1, run: 0.9, cb: 0.91 }, players: [
+    { name: "Blake Baker", pos: "QB", pAtt: 11.9, cmp: 0.66, ypa: 8.07, pTD: 0.38, iNT: 0.23, rYd: 20, rTD: 0.23 },
+    { name: "Andrew Burnette", pos: "RB", car: 7.3, ypc: 5.17, ruTD: 0.69, tgt: 0.2, cr: 0.72, ypr: 4.5, recTD: 0 },
+    { name: "Marcus Calwise Jr.", pos: "WR", tgt: 4.1, cr: 0.6, ypr: 13, recTD: 0.38, wr1: true },
+    { name: "Jalen Mickens", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 8.9, recTD: 0.08 },
+    { name: "David Pierro", pos: "WR", tgt: 1, cr: 0.6, ypr: 11.1, recTD: 0 },
+    { name: "Eli Finley", pos: "TE", tgt: 4.5, cr: 0.65, ypr: 11.7, recTD: 0 } ] },
+  "M-OH": { abbr: "M-OH", name: "Miami OH", pace: 0.93, def: { pass: 0.92, run: 0.89, cb: 0.91 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 26.5, cmp: 0.49, ypa: 7.07, pTD: 1.21, iNT: 0.79, rYd: 27.1, rTD: 0.24 },
+    { name: "Rodney Nelson", pos: "RB", car: 21, ypc: 6.14, ruTD: 1.29, tgt: 3, cr: 0.72, ypr: 7.6, recTD: 0.07 },
+    { name: "D'Shawntae Jones", pos: "RB", car: 4.5, ypc: 4.4, ruTD: 0.5, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Maleek Huggins", pos: "WR", tgt: 7.6, cr: 0.6, ypr: 13.5, recTD: 0.57, wr1: true },
+    { name: "Keith Reynolds", pos: "WR", tgt: 4.3, cr: 0.6, ypr: 9.8, recTD: 0.07 },
+    { name: "Braylon Isom", pos: "WR", tgt: 1.2, cr: 0.6, ypr: 14.1, recTD: 0.21 },
+    { name: "Christian Ross", pos: "TE", tgt: 2, cr: 0.65, ypr: 9.7, recTD: 0.07 } ] },
+  MASS: { abbr: "MASS", name: "UMass", pace: 0.96, def: { pass: 0.98, run: 1.15, cb: 1.1 }, players: [
+    { name: "Logan Inagawa", pos: "QB", pAtt: 15.8, cmp: 0.68, ypa: 7.33, pTD: 0.75, iNT: 0.33, rYd: 33.2, rTD: 0.75 },
+    { name: "Jordan Washington", pos: "RB", car: 7.2, ypc: 3.95, ruTD: 0.25, tgt: 2.5, cr: 0.72, ypr: 9.2, recTD: 0.08 },
+    { name: "Elijah Faulkner", pos: "RB", car: 3.3, ypc: 2.85, ruTD: 0, tgt: 0.1, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Devin Matthews", pos: "WR", tgt: 5, cr: 0.6, ypr: 18, recTD: 0.58, wr1: true },
+    { name: "Kezion Dia-Johnson", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 12.2, recTD: 0.08 },
+    { name: "Max Dowling", pos: "TE", tgt: 2.6, cr: 0.65, ypr: 10, recTD: 0.25 } ] },
+  MD: { abbr: "MD", name: "Maryland", pace: 0.99, def: { pass: 1.04, run: 1.15, cb: 1 }, players: [
+    { name: "Malik Washington", pos: "QB", pAtt: 39.4, cmp: 0.58, ypa: 6.26, pTD: 1.42, iNT: 0.75, rYd: 25.3, rTD: 0.33 },
+    { name: "Iverson Howard", pos: "RB", car: 3.3, ypc: 3.21, ruTD: 0, tgt: 0.2, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Na'eem Abdul-Rahim Gladding", pos: "WR", tgt: 7.1, cr: 0.6, ypr: 13.1, recTD: 0.5, wr1: true },
+    { name: "Chris Durr Jr.", pos: "WR", tgt: 6.3, cr: 0.6, ypr: 10.4, recTD: 0.33 },
+    { name: "Kaleb Webb", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 14.5, recTD: 0.17 },
+    { name: "Dorian Fleming", pos: "TE", tgt: 5.1, cr: 0.65, ypr: 8.8, recTD: 0.25 } ] },
+  MEM: { abbr: "MEM", name: "Memphis", pace: 1.02, def: { pass: 1.04, run: 0.88, cb: 1.06 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 31.7, cmp: 0.67, ypa: 7.21, pTD: 1.31, iNT: 0.69, rYd: 33, rTD: 0.52 },
+    { name: "Dallan Hayden", pos: "RB", car: 5.4, ypc: 4.66, ruTD: 0.08, tgt: 0.4, cr: 0.72, ypr: 3.8, recTD: 0 },
+    { name: "Jaylin Carter", pos: "RB", car: 2.9, ypc: 4.37, ruTD: 0.15, tgt: 2.1, cr: 0.72, ypr: 6.7, recTD: 0 },
+    { name: "Tychaun Chapman", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 17.9, recTD: 0.23, wr1: true },
+    { name: "Brady Kluse", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 10.9, recTD: 0.15 },
+    { name: "Bryce Dorsey", pos: "WR", tgt: 1, cr: 0.6, ypr: 8.6, recTD: 0 },
+    { name: "Hunter Tipton", pos: "TE", tgt: 4.6, cr: 0.65, ypr: 10.5, recTD: 0.15 } ] },
+  MIA: { abbr: "MIA", name: "Miami", pace: 0.99, def: { pass: 0.94, run: 0.85, cb: 0.9 }, players: [
+    { name: "Darian Mensah", pos: "QB", pAtt: 31.3, cmp: 0.67, ypa: 7.95, pTD: 2.13, iNT: 0.38, rYd: -2, rTD: 0.06 },
+    { name: "Mark Fletcher Jr.", pos: "RB", car: 13.5, ypc: 5.52, ruTD: 0.75, tgt: 1.5, cr: 0.72, ypr: 8.2, recTD: 0.13 },
+    { name: "CharMar Brown", pos: "RB", car: 7.6, ypc: 3.89, ruTD: 0.44, tgt: 1.7, cr: 0.72, ypr: 6.9, recTD: 0.13 },
+    { name: "Malachi Toney", pos: "WR", tgt: 11.4, cr: 0.6, ypr: 11.1, recTD: 0.63, wr1: true },
+    { name: "Cooper Barkate", pos: "WR", tgt: 7.5, cr: 0.6, ypr: 15.4, recTD: 0.44 },
+    { name: "Vandrevius Jacobs", pos: "WR", tgt: 3.3, cr: 0.6, ypr: 17.1, recTD: 0.25 },
+    { name: "Elija Lofton", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 9.5, recTD: 0.19 } ] },
+  MICH: { abbr: "MICH", name: "Michigan", pace: 0.97, def: { pass: 0.97, run: 0.85, cb: 0.91 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 26.2, cmp: 0.59, ypa: 7.14, pTD: 0.85, iNT: 0.77, rYd: 37.8, rTD: 0.51 },
+    { name: "Jordan Marshall", pos: "RB", car: 11.5, ypc: 6.21, ruTD: 0.77, tgt: 1, cr: 0.72, ypr: 10.2, recTD: 0 },
+    { name: "Bryson Kuzdzal", pos: "RB", car: 5.8, ypc: 4.29, ruTD: 0.31, tgt: 0.4, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Andrew Marsh", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 14.5, recTD: 0.31, wr1: true },
+    { name: "JJ Buchanan", pos: "WR", tgt: 3.3, cr: 0.6, ypr: 16.4, recTD: 0.38 },
+    { name: "Channing Goodwin", pos: "WR", tgt: 1.5, cr: 0.6, ypr: 12.3, recTD: 0 },
+    { name: "Zack Marshall", pos: "TE", tgt: 1.9, cr: 0.65, ypr: 12.4, recTD: 0.08 } ] },
+  MINN: { abbr: "MINN", name: "Minnesota", pace: 0.9, def: { pass: 0.97, run: 0.85, cb: 1.05 }, players: [
+    { name: "Drake Lindsey", pos: "QB", pAtt: 29.9, cmp: 0.63, ypa: 6.12, pTD: 1.38, iNT: 0.46, rYd: -9.2, rTD: 0.31 },
+    { name: "Darius Taylor", pos: "RB", car: 11, ypc: 4.69, ruTD: 0.31, tgt: 3.6, cr: 0.72, ypr: 7.2, recTD: 0 },
+    { name: "TJ Thomas", pos: "RB", car: 7, ypc: 4.22, ruTD: 0.46, tgt: 1.6, cr: 0.72, ypr: 8.3, recTD: 0 },
+    { name: "Javon Tracy", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 12.3, recTD: 0.46, wr1: true },
+    { name: "Jalen Smith", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 15, recTD: 0.31 },
+    { name: "Noah Jennings", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 14, recTD: 0 } ] },
+  MISS: { abbr: "MISS", name: "Ole Miss", pace: 1.09, def: { pass: 0.91, run: 0.99, cb: 0.92 }, players: [
+    { name: "Trinidad Chambliss", pos: "QB", pAtt: 29.7, cmp: 0.66, ypa: 8.85, pTD: 1.47, iNT: 0.2, rYd: 35.1, rTD: 0.53 },
+    { name: "Kewan Lacy", pos: "RB", car: 20.4, ypc: 5.12, ruTD: 1.6, tgt: 2.7, cr: 0.72, ypr: 6.1, recTD: 0 },
+    { name: "Joshua Dye", pos: "RB", car: 19.7, ypc: 6.21, ruTD: 1.87, tgt: 0.6, cr: 0.72, ypr: 5.7, recTD: 0 },
+    { name: "Johntay Cook II", pos: "WR", tgt: 5, cr: 0.6, ypr: 12.2, recTD: 0.13, wr1: true },
+    { name: "Deuce Alexander", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 15.5, recTD: 0.13 },
+    { name: "Darrell Gill Jr.", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 15.8, recTD: 0.33 },
+    { name: "Caleb Odom", pos: "TE", tgt: 1.9, cr: 0.65, ypr: 10.4, recTD: 0.13 } ] },
+  MIZ: { abbr: "MIZ", name: "Missouri", pace: 1.06, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 27.8, cmp: 0.63, ypa: 6.75, pTD: 1.15, iNT: 0.85, rYd: 41.1, rTD: 0.48 },
+    { name: "Ahmad Hardy", pos: "RB", car: 19.7, ypc: 6.44, ruTD: 1.23, tgt: 0.6, cr: 0.72, ypr: 3.7, recTD: 0 },
+    { name: "Xai'Shaun Edwards", pos: "RB", car: 14.9, ypc: 5.25, ruTD: 0.92, tgt: 1.9, cr: 0.72, ypr: 5.9, recTD: 0 },
+    { name: "Cayden Lee", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 14.4, recTD: 0.23, wr1: true },
+    { name: "Donovan Olugbode", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 13.4, recTD: 0.15 },
+    { name: "Caleb Goodie Sr.", pos: "WR", tgt: 3.7, cr: 0.6, ypr: 16.7, recTD: 0.15 },
+    { name: "Brett Norfleet", pos: "TE", tgt: 3.7, cr: 0.65, ypr: 8.2, recTD: 0.38 } ] },
+  MOST: { abbr: "MOST", name: "Missouri St", pace: 0.98, def: { pass: 1.06, run: 1.02, cb: 1.02 }, players: [
+    { name: "Skyler Locklear", pos: "QB", pAtt: 16.2, cmp: 0.55, ypa: 6.72, pTD: 1, iNT: 0.85, rYd: 30.5, rTD: 0.62 },
+    { name: "Ramone Green Jr.", pos: "RB", car: 4, ypc: 5.35, ruTD: 0.08, tgt: 3.1, cr: 0.72, ypr: 15.4, recTD: 0.23 },
+    { name: "Jmariyae Robinson", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 14.4, recTD: 0.54, wr1: true },
+    { name: "Makai Cope", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 13.5, recTD: 0 },
+    { name: "Mekhi Miller", pos: "WR", tgt: 1.2, cr: 0.6, ypr: 6.4, recTD: 0 },
+    { name: "Jeron Askren", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 11.8, recTD: 0.38 } ] },
+  MRSH: { abbr: "MRSH", name: "Marshall", pace: 1.04, def: { pass: 1.15, run: 0.99, cb: 1.1 }, players: [
+    { name: "Carlos Del Rio-Wilson", pos: "QB", pAtt: 21.3, cmp: 0.67, ypa: 7.98, pTD: 1.42, iNT: 0.42, rYd: 55, rTD: 0.5 },
+    { name: "TJ Lester", pos: "RB", car: 8.4, ypc: 4.28, ruTD: 0.5, tgt: 1, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Jo'Shon Barbie", pos: "RB", car: 4.7, ypc: 4.45, ruTD: 0.42, tgt: 0.6, cr: 0.72, ypr: 6, recTD: 0 },
+    { name: "Demarcus Lacey", pos: "WR", tgt: 9, cr: 0.6, ypr: 11.8, recTD: 0.42, wr1: true },
+    { name: "Owen Sweeney", pos: "WR", tgt: 6.1, cr: 0.6, ypr: 16.4, recTD: 0.67 },
+    { name: "De'Andre Tamarez", pos: "WR", tgt: 4.4, cr: 0.6, ypr: 12.3, recTD: 0.17 },
+    { name: "Toby Payne", pos: "TE", tgt: 4.7, cr: 0.65, ypr: 10.6, recTD: 0.25 } ] },
+  MSST: { abbr: "MSST", name: "Mississippi St", pace: 1.08, def: { pass: 1.03, run: 1.15, cb: 1.03 }, players: [
+    { name: "AJ Swann", pos: "QB", pAtt: 17.1, cmp: 0.59, ypa: 6.73, pTD: 0.77, iNT: 0.62, rYd: -0.9, rTD: 0 },
+    { name: "Fluff Bothwell", pos: "RB", car: 10.9, ypc: 4.77, ruTD: 0.46, tgt: 1.5, cr: 0.72, ypr: 7.5, recTD: 0 },
+    { name: "Xavier Gayten", pos: "RB", car: 2.2, ypc: 5.41, ruTD: 0.15, tgt: 0.3, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Anthony Evans III", pos: "WR", tgt: 8.6, cr: 0.6, ypr: 12.4, recTD: 0.31, wr1: true },
+    { name: "Marquis Johnson", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 12.1, recTD: 0.15 } ] },
+  MSU: { abbr: "MSU", name: "Michigan St", pace: 0.96, def: { pass: 1.06, run: 0.98, cb: 1.07 }, players: [
+    { name: "Alessio Milivojevic", pos: "QB", pAtt: 14.4, cmp: 0.64, ypa: 7.32, pTD: 0.83, iNT: 0.25, rYd: -4.9, rTD: 0.08 },
+    { name: "Cam Edwards", pos: "RB", car: 17.5, ypc: 5.9, ruTD: 1.25, tgt: 2.2, cr: 0.72, ypr: 9.8, recTD: 0.08 },
+    { name: "Marvis Parrish", pos: "RB", car: 8.8, ypc: 5.43, ruTD: 0.08, tgt: 4.2, cr: 0.72, ypr: 5.6, recTD: 0.08 },
+    { name: "Jameel Gardner Jr.", pos: "WR", tgt: 4.4, cr: 0.6, ypr: 13.9, recTD: 0.17, wr1: true },
+    { name: "Chrishon McCray", pos: "WR", tgt: 3.3, cr: 0.6, ypr: 13.8, recTD: 0.25 },
+    { name: "KK Smith", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 15.4, recTD: 0.17 } ] },
+  MTSU: { abbr: "MTSU", name: "MTSU", pace: 1.02, def: { pass: 1.15, run: 0.95, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 41.7, cmp: 0.6, ypa: 6.39, pTD: 1.92, iNT: 0.58, rYd: 19, rTD: 0.18 },
+    { name: "DJ Taylor", pos: "RB", car: 2.2, ypc: 7.65, ruTD: 0.17, tgt: 0.8, cr: 0.72, ypr: 7.7, recTD: 0.08 },
+    { name: "Antonio Martin", pos: "RB", car: 1.6, ypc: 6.79, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Cam'ron Lacy", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 14.4, recTD: 0.25, wr1: true },
+    { name: "AJ Jones", pos: "WR", tgt: 3.9, cr: 0.6, ypr: 7.7, recTD: 0.42 },
+    { name: "Landon Collins", pos: "WR", tgt: 2.2, cr: 0.6, ypr: 11.3, recTD: 0.08 } ] },
+  NCSU: { abbr: "NCSU", name: "NC State", pace: 0.96, def: { pass: 1.15, run: 0.92, cb: 1.07 }, players: [
+    { name: "CJ Bailey", pos: "QB", pAtt: 30.5, cmp: 0.69, ypa: 7.82, pTD: 1.92, iNT: 0.69, rYd: 16.5, rTD: 0.46 },
+    { name: "Jayden Scott", pos: "RB", car: 8.2, ypc: 5.61, ruTD: 0.31, tgt: 1.6, cr: 0.72, ypr: 8.8, recTD: 0 },
+    { name: "Davion Gause", pos: "RB", car: 4.7, ypc: 4.25, ruTD: 0.23, tgt: 1.7, cr: 0.72, ypr: 8.3, recTD: 0.15 },
+    { name: "Keenan Jackson", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 10, recTD: 0.15, wr1: true },
+    { name: "Teddy Hoffmann", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 14, recTD: 0.23 },
+    { name: "Davion Dozier", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 22.4, recTD: 0.38 },
+    { name: "Hunter Provience", pos: "TE", tgt: 1.3, cr: 0.65, ypr: 12.3, recTD: 0.08 } ] },
+  ND: { abbr: "ND", name: "Notre Dame", pace: 0.94, def: { pass: 0.98, run: 0.85, cb: 0.9 }, players: [
+    { name: "CJ Carr", pos: "QB", pAtt: 24.4, cmp: 0.67, ypa: 9.35, pTD: 2, iNT: 0.5, rYd: 2.8, rTD: 0.25 },
+    { name: "Nolan James Jr.", pos: "RB", car: 1.2, ypc: 2.64, ruTD: 0, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Jordan Faison", pos: "WR", tgt: 6.8, cr: 0.6, ypr: 13.1, recTD: 0.33, wr1: true },
+    { name: "Micah Gilbert", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 10.3, recTD: 0.08 },
+    { name: "Mylan Graham", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 15.5, recTD: 0 } ] },
+  NEB: { abbr: "NEB", name: "Nebraska", pace: 0.95, def: { pass: 0.85, run: 1.15, cb: 0.9 }, players: [
+    { name: "Anthony Colandrea", pos: "QB", pAtt: 32.1, cmp: 0.66, ypa: 8.29, pTD: 1.77, iNT: 0.69, rYd: 49.9, rTD: 0.77 },
+    { name: "Isaiah Mozee", pos: "RB", car: 2, ypc: 4.42, ruTD: 0, tgt: 1.5, cr: 0.72, ypr: 11.1, recTD: 0 },
+    { name: "Mekhi Nelson", pos: "RB", car: 2.1, ypc: 5.44, ruTD: 0.15, tgt: 0.9, cr: 0.72, ypr: 12.8, recTD: 0 },
+    { name: "Kwazi Gilmer", pos: "WR", tgt: 6.4, cr: 0.6, ypr: 10.7, recTD: 0.31, wr1: true },
+    { name: "Jacory Barney Jr.", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 10.8, recTD: 0.38 },
+    { name: "Nyziah Hunter", pos: "WR", tgt: 5.5, cr: 0.6, ypr: 14.3, recTD: 0.38 },
+    { name: "Luke Lindenmeyer", pos: "TE", tgt: 3.4, cr: 0.65, ypr: 10.8, recTD: 0.15 } ] },
+  NEV: { abbr: "NEV", name: "Nevada", pace: 0.9, def: { pass: 1.01, run: 1, cb: 1.05 }, players: [
+    { name: "Carter Jones", pos: "QB", pAtt: 14.3, cmp: 0.64, ypa: 5.96, pTD: 0.5, iNT: 0.67, rYd: 3, rTD: 0 },
+    { name: "Herschel Turner", pos: "RB", car: 5.8, ypc: 5.12, ruTD: 0, tgt: 0.3, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Ky Woods", pos: "RB", car: 1.6, ypc: 5.42, ruTD: 0, tgt: 0.9, cr: 0.72, ypr: 11.1, recTD: 0.08 },
+    { name: "Damien Morgan", pos: "WR", tgt: 7.4, cr: 0.6, ypr: 11.5, recTD: 0.25, wr1: true },
+    { name: "Donnie Cheers", pos: "WR", tgt: 6.1, cr: 0.6, ypr: 13.3, recTD: 0.42 },
+    { name: "Jaceon Doss", pos: "WR", tgt: 4, cr: 0.6, ypr: 22.7, recTD: 0.42 } ] },
+  NIU: { abbr: "NIU", name: "N Illinois", pace: 0.93, def: { pass: 0.85, run: 1.15, cb: 0.93 }, players: [
+    { name: "Taron Dickens", pos: "QB", pAtt: 30.4, cmp: 0.74, ypa: 9.61, pTD: 3.17, iNT: 0.17, rYd: 26.8, rTD: 0.08 },
+    { name: "Telly Johnson Jr.", pos: "RB", car: 10.3, ypc: 5.74, ruTD: 0.33, tgt: 1.9, cr: 0.72, ypr: 6.1, recTD: 0 },
+    { name: "Elijah Porter", pos: "RB", car: 1, ypc: 6.67, ruTD: 0, tgt: 0.1, cr: 0.72, ypr: 16, recTD: 0.08 },
+    { name: "DeAree Rogers", pos: "WR", tgt: 6.4, cr: 0.6, ypr: 11, recTD: 0.25, wr1: true },
+    { name: "George Dimopoulos", pos: "WR", tgt: 1.5, cr: 0.6, ypr: 5.3, recTD: 0 },
+    { name: "Rickey Taylor Jr.", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 14.9, recTD: 0.08 } ] },
+  NMSU: { abbr: "NMSU", name: "New Mexico St", pace: 1.03, def: { pass: 1.09, run: 1.1, cb: 0.98 }, players: [
+    { name: "Trey Hedden", pos: "QB", pAtt: 34.9, cmp: 0.68, ypa: 7.08, pTD: 1.42, iNT: 1.08, rYd: -14.7, rTD: 0.08 },
+    { name: "James Jones", pos: "RB", car: 8.2, ypc: 8, ruTD: 0.75, tgt: 0.6, cr: 0.72, ypr: 10, recTD: 0 },
+    { name: "Dijon Stanley", pos: "RB", car: 6.3, ypc: 4.11, ruTD: 0.17, tgt: 2.8, cr: 0.72, ypr: 5.5, recTD: 0 },
+    { name: "TK King", pos: "WR", tgt: 5.7, cr: 0.6, ypr: 14.3, recTD: 0.25, wr1: true },
+    { name: "Brodie Malone-Bradford", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 11, recTD: 0.17 },
+    { name: "Lyndon Ravare", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 11.5, recTD: 0.08 },
+    { name: "Josiah Thomas", pos: "TE", tgt: 3.6, cr: 0.65, ypr: 8.1, recTD: 0.25 } ] },
+  NU: { abbr: "NU", name: "Northwestern", pace: 0.95, def: { pass: 0.89, run: 0.91, cb: 1.02 }, players: [
+    { name: "Aidan Chiles", pos: "QB", pAtt: 15.6, cmp: 0.63, ypa: 6.86, pTD: 0.77, iNT: 0.23, rYd: 17.5, rTD: 0.46 },
+    { name: "Caleb Komolafe", pos: "RB", car: 14.6, ypc: 4.95, ruTD: 0.85, tgt: 1.2, cr: 0.72, ypr: 5.5, recTD: 0.08 },
+    { name: "Joseph Himon II", pos: "RB", car: 7.6, ypc: 4.91, ruTD: 0.08, tgt: 2.2, cr: 0.72, ypr: 5.6, recTD: 0 },
+    { name: "Hayden Eligon II", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 14.1, recTD: 0.23, wr1: true },
+    { name: "Ricky Ahumaraeze", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 20, recTD: 0 },
+    { name: "Alex Honig", pos: "TE", tgt: 1.5, cr: 0.65, ypr: 12.5, recTD: 0.23 } ] },
+  ODU: { abbr: "ODU", name: "Old Dominion", pace: 1.02, def: { pass: 0.88, run: 0.93, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 25.5, cmp: 0.58, ypa: 8.47, pTD: 1.62, iNT: 0.77, rYd: 42.9, rTD: 0.48 },
+    { name: "Devin Roche", pos: "RB", car: 8.5, ypc: 5.68, ruTD: 0.31, tgt: 0.5, cr: 0.72, ypr: 6.2, recTD: 0 },
+    { name: "Maurki James", pos: "RB", car: 4.3, ypc: 4, ruTD: 0.15, tgt: 0.6, cr: 0.72, ypr: 6.5, recTD: 0 },
+    { name: "Kendall Harris", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 12.9, recTD: 0.23, wr1: true },
+    { name: "Sidney Mbanasor", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 11.3, recTD: 0 } ] },
+  OHIO: { abbr: "OHIO", name: "Ohio", pace: 1, def: { pass: 0.96, run: 0.96, cb: 1.06 }, players: [
+    { name: "Matt Vezza", pos: "QB", pAtt: 28.4, cmp: 0.61, ypa: 7.24, pTD: 1.46, iNT: 0.54, rYd: 46.5, rTD: 0.62 },
+    { name: "Duncan Brune", pos: "RB", car: 9.2, ypc: 4.88, ruTD: 0.62, tgt: 0.5, cr: 0.72, ypr: 11.4, recTD: 0 },
+    { name: "Victor Rosa", pos: "RB", car: 2.3, ypc: 5.17, ruTD: 0.15, tgt: 1.6, cr: 0.72, ypr: 9.8, recTD: 0.08 },
+    { name: "Dom Dorwart", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 10.8, recTD: 0, wr1: true },
+    { name: "Eian Pugh", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 12.5, recTD: 0 } ] },
+  OKST: { abbr: "OKST", name: "Oklahoma St", pace: 0.96, def: { pass: 1.15, run: 1.11, cb: 1.1 }, players: [
+    { name: "Drew Mestemaker", pos: "QB", pAtt: 38.6, cmp: 0.69, ypa: 9.46, pTD: 2.83, iNT: 0.75, rYd: 7.4, rTD: 0.42 },
+    { name: "Caleb Hawkins", pos: "RB", car: 19.3, ypc: 6.21, ruTD: 2.08, tgt: 3.7, cr: 0.72, ypr: 11.6, recTD: 0.33 },
+    { name: "Tre Page III", pos: "RB", car: 9.3, ypc: 7.49, ruTD: 0.58, tgt: 0.8, cr: 0.72, ypr: 4.1, recTD: 0 },
+    { name: "Miles Coleman", pos: "WR", tgt: 6.5, cr: 0.6, ypr: 11.7, recTD: 0.17, wr1: true },
+    { name: "Chris Barnes", pos: "WR", tgt: 5.4, cr: 0.6, ypr: 14, recTD: 0.25 },
+    { name: "Israel Polk", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 15.9, recTD: 0.67 },
+    { name: "Morgan McPhaul", pos: "TE", tgt: 1.9, cr: 0.65, ypr: 11.6, recTD: 0.08 } ] },
+  ORE: { abbr: "ORE", name: "Oregon", pace: 0.98, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Dante Moore", pos: "QB", pAtt: 27.5, cmp: 0.72, ypa: 8.65, pTD: 2, iNT: 0.67, rYd: 10.4, rTD: 0.13 },
+    { name: "Jordon Davison", pos: "RB", car: 7.5, ypc: 5.9, ruTD: 1, tgt: 1.1, cr: 0.72, ypr: 5.2, recTD: 0 },
+    { name: "Dierre Hill Jr.", pos: "RB", car: 5, ypc: 8, ruTD: 0.33, tgt: 1.5, cr: 0.72, ypr: 8.6, recTD: 0.07 },
+    { name: "Iverson Hooks", pos: "WR", tgt: 8, cr: 0.6, ypr: 12.9, recTD: 0.47, wr1: true },
+    { name: "Jeremiah McClellan", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 14.7, recTD: 0.2 },
+    { name: "Dakorien Moore", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 14.6, recTD: 0.2 },
+    { name: "Jamari Johnson", pos: "TE", tgt: 3.3, cr: 0.65, ypr: 15.9, recTD: 0.2 } ] },
+  ORST: { abbr: "ORST", name: "Oregon St", pace: 1.04, def: { pass: 1.02, run: 1.05, cb: 1.08 }, players: [
+    { name: "Braden Atkinson", pos: "QB", pAtt: 33.9, cmp: 0.66, ypa: 8.87, pTD: 2.83, iNT: 0.92, rYd: 0.8, rTD: 0.08 },
+    { name: "Cornell Hatcher Jr.", pos: "RB", car: 4.3, ypc: 5.62, ruTD: 0.17, tgt: 0.6, cr: 0.72, ypr: 3.4, recTD: 0.08 },
+    { name: "AJ Newberry", pos: "RB", car: 1.5, ypc: 3.17, ruTD: 0.25, tgt: 0.2, cr: 0.72, ypr: 9, recTD: 0 },
+    { name: "Adonis McDaniel", pos: "WR", tgt: 7.2, cr: 0.6, ypr: 13, recTD: 0.5, wr1: true },
+    { name: "Xavyion Noland", pos: "WR", tgt: 5.1, cr: 0.6, ypr: 21, recTD: 0.58 },
+    { name: "Eddie Freauff", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 12, recTD: 0.08 },
+    { name: "Eric Olsen", pos: "TE", tgt: 6.5, cr: 0.65, ypr: 11.1, recTD: 0.17 } ] },
+  OSU: { abbr: "OSU", name: "Ohio State", pace: 0.94, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Julian Sayin", pos: "QB", pAtt: 27.9, cmp: 0.77, ypa: 9.23, pTD: 2.29, iNT: 0.57, rYd: -3.1, rTD: 0 },
+    { name: "Bo Jackson", pos: "RB", car: 12.8, ypc: 6.09, ruTD: 0.43, tgt: 1.9, cr: 0.72, ypr: 10.5, recTD: 0.07 },
+    { name: "Ja'Kobi Jackson", pos: "RB", car: 1.9, ypc: 3.63, ruTD: 0, tgt: 0.4, cr: 0.72, ypr: 6.8, recTD: 0 },
+    { name: "Jeremiah Smith", pos: "WR", tgt: 10.4, cr: 0.6, ypr: 14.3, recTD: 0.86, wr1: true },
+    { name: "Devin McCuin", pos: "WR", tgt: 7.7, cr: 0.6, ypr: 11.2, recTD: 0.57 },
+    { name: "Brandon Inniss", pos: "WR", tgt: 4.3, cr: 0.6, ypr: 7.5, recTD: 0.21 } ] },
+  OU: { abbr: "OU", name: "Oklahoma", pace: 1, def: { pass: 0.9, run: 0.85, cb: 0.9 }, players: [
+    { name: "John Mateer", pos: "QB", pAtt: 30.5, cmp: 0.62, ypa: 7.27, pTD: 1.08, iNT: 0.85, rYd: 33.2, rTD: 0.62 },
+    { name: "Tory Blaylock", pos: "RB", car: 9.2, ypc: 4, ruTD: 0.31, tgt: 1.4, cr: 0.72, ypr: 5.9, recTD: 0 },
+    { name: "Lloyd Avant", pos: "RB", car: 6.9, ypc: 4.63, ruTD: 0.38, tgt: 2.6, cr: 0.72, ypr: 10.9, recTD: 0.08 },
+    { name: "Isaiah Sategna III", pos: "WR", tgt: 8.6, cr: 0.6, ypr: 14.4, recTD: 0.62, wr1: true },
+    { name: "Trell Harris", pos: "WR", tgt: 7.6, cr: 0.6, ypr: 14.4, recTD: 0.38 },
+    { name: "Parker Livingstone", pos: "WR", tgt: 3.7, cr: 0.6, ypr: 17.8, recTD: 0.46 },
+    { name: "Rocky Beers", pos: "TE", tgt: 3.7, cr: 0.65, ypr: 12.5, recTD: 0.54 } ] },
+  PITT: { abbr: "PITT", name: "Pitt", pace: 1.03, def: { pass: 1.08, run: 0.85, cb: 1 }, players: [
+    { name: "Mason Heintschel", pos: "QB", pAtt: 24.3, cmp: 0.64, ypa: 7.45, pTD: 1.23, iNT: 0.62, rYd: 6.8, rTD: 0.15 },
+    { name: "Ethan Shine", pos: "RB", car: 14.8, ypc: 3.97, ruTD: 0.38, tgt: 2.4, cr: 0.72, ypr: 11.1, recTD: 0.08 },
+    { name: "Justin Cook", pos: "RB", car: 0.7, ypc: 3.44, ruTD: 0, tgt: 0.9, cr: 0.72, ypr: 5.5, recTD: 0 },
+    { name: "Malik Knight", pos: "WR", tgt: 6, cr: 0.6, ypr: 16.5, recTD: 0.54, wr1: true },
+    { name: "Cataurus Hicks", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 17.6, recTD: 0.31 },
+    { name: "Elijah Lagg", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 8.2, recTD: 0 } ] },
+  PSU: { abbr: "PSU", name: "Penn State", pace: 0.94, def: { pass: 0.85, run: 0.95, cb: 0.92 }, players: [
+    { name: "Rocco Becht", pos: "QB", pAtt: 26.1, cmp: 0.6, ypa: 7.62, pTD: 1.23, iNT: 0.69, rYd: 8.9, rTD: 0.62 },
+    { name: "Carson Hansen", pos: "RB", car: 14.5, ypc: 5.06, ruTD: 0.46, tgt: 2, cr: 0.72, ypr: 7.1, recTD: 0 },
+    { name: "James Peoples", pos: "RB", car: 4.7, ypc: 5.64, ruTD: 0.23, tgt: 1.1, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Chase Sowell", pos: "WR", tgt: 4.1, cr: 0.6, ypr: 15.6, recTD: 0.15, wr1: true },
+    { name: "Keith Jones Jr.", pos: "WR", tgt: 4, cr: 0.6, ypr: 14.1, recTD: 0.31 },
+    { name: "Brett Eskildsen", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 17.5, recTD: 0.38 },
+    { name: "Benjamin Brahmer", pos: "TE", tgt: 4.4, cr: 0.65, ypr: 12.1, recTD: 0.46 } ] },
+  PUR: { abbr: "PUR", name: "Purdue", pace: 0.97, def: { pass: 1.11, run: 1.15, cb: 1.1 }, players: [
+    { name: "Ryan Browne", pos: "QB", pAtt: 28.2, cmp: 0.59, ypa: 6.37, pTD: 0.75, iNT: 0.83, rYd: 17.2, rTD: 0.33 },
+    { name: "Fame Ijeboi", pos: "RB", car: 8.1, ypc: 4.55, ruTD: 0.17, tgt: 1.4, cr: 0.72, ypr: 4.5, recTD: 0.08 },
+    { name: "Antonio Harris", pos: "RB", car: 5.8, ypc: 4.42, ruTD: 0.17, tgt: 2, cr: 0.72, ypr: 8.1, recTD: 0 },
+    { name: "Bisi Owens", pos: "WR", tgt: 9.2, cr: 0.6, ypr: 10.5, recTD: 0.42, wr1: true },
+    { name: "Corey Smith", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 16.9, recTD: 0.08 },
+    { name: "Jaylan Hornsby", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 12.9, recTD: 0.08 },
+    { name: "Kylan Fox", pos: "TE", tgt: 2.1, cr: 0.65, ypr: 8.6, recTD: 0.08 } ] },
+  RICE: { abbr: "RICE", name: "Rice", pace: 1, def: { pass: 1.1, run: 1.09, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 17.2, cmp: 0.66, ypa: 5.67, pTD: 0.85, iNT: 0.31, rYd: 36.9, rTD: 0.31 },
+    { name: "Quinton Jackson", pos: "RB", car: 13.8, ypc: 4.94, ruTD: 0.46, tgt: 0.4, cr: 0.72, ypr: 16, recTD: 0.08 },
+    { name: "DAndre Hardeman Jr.", pos: "RB", car: 6.3, ypc: 3.96, ruTD: 0.15, tgt: 0.1, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Max Mosey", pos: "WR", tgt: 6.4, cr: 0.6, ypr: 9.8, recTD: 0, wr1: true },
+    { name: "Braylen Walker", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 8.2, recTD: 0 } ] },
+  RUTG: { abbr: "RUTG", name: "Rutgers", pace: 1.05, def: { pass: 1.02, run: 1.15, cb: 1.1 }, players: [
+    { name: "Dylan Lonergan", pos: "QB", pAtt: 23.7, cmp: 0.67, ypa: 7.13, pTD: 1, iNT: 0.42, rYd: -3.1, rTD: 0.08 },
+    { name: "Ja'shon Benjamin", pos: "RB", car: 5.7, ypc: 4.82, ruTD: 0.17, tgt: 0.5, cr: 0.72, ypr: 4.8, recTD: 0 },
+    { name: "KJ Duff", pos: "WR", tgt: 8.3, cr: 0.6, ypr: 18.1, recTD: 0.58, wr1: true },
+    { name: "Ben Black III", pos: "WR", tgt: 1.1, cr: 0.6, ypr: 14.9, recTD: 0.08 },
+    { name: "Kam Anthony", pos: "TE", tgt: 0.9, cr: 0.65, ypr: 16.7, recTD: 0.17 } ] },
+  SC: { abbr: "SC", name: "South Carolina", pace: 0.94, def: { pass: 0.99, run: 0.91, cb: 0.98 }, players: [
+    { name: "LaNorris Sellers", pos: "QB", pAtt: 24.4, cmp: 0.61, ypa: 8.32, pTD: 1.08, iNT: 0.67, rYd: 22.5, rTD: 0.42 },
+    { name: "Matt Fuller", pos: "RB", car: 6, ypc: 3.61, ruTD: 0.17, tgt: 0.7, cr: 0.72, ypr: 5.3, recTD: 0 },
+    { name: "Christian Clark", pos: "RB", car: 4.6, ypc: 4.29, ruTD: 0.17, tgt: 0.5, cr: 0.72, ypr: 14.3, recTD: 0 },
+    { name: "Nyck Harbor", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 20.6, recTD: 0.5, wr1: true },
+    { name: "DJ Black", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 12.4, recTD: 0.17 },
+    { name: "Jayden Sellers", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 15.3, recTD: 0.08 },
+    { name: "Brady Hunt", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 8, recTD: 0 } ] },
+  SDSU: { abbr: "SDSU", name: "San Diego St", pace: 0.97, def: { pass: 0.85, run: 0.86, cb: 0.9 }, players: [
+    { name: "Jayden Denegal", pos: "QB", pAtt: 18.7, cmp: 0.59, ypa: 7.44, pTD: 0.69, iNT: 0.62, rYd: 7.6, rTD: 0.31 },
+    { name: "Lucky Sutton", pos: "RB", car: 19.5, ypc: 5.11, ruTD: 0.77, tgt: 0.5, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Javion Kinnard", pos: "RB", car: 0.9, ypc: 4.67, ruTD: 0, tgt: 1.9, cr: 0.72, ypr: 12.7, recTD: 0.08 },
+    { name: "Jordan Napier", pos: "WR", tgt: 6.2, cr: 0.6, ypr: 13.1, recTD: 0.15, wr1: true },
+    { name: "Aldrich Doe", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 12.6, recTD: 0.15 },
+    { name: "Donovan Brown", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 15.7, recTD: 0.15 },
+    { name: "Jackson Ford", pos: "TE", tgt: 1.2, cr: 0.65, ypr: 8.6, recTD: 0.08 } ] },
+  SHSU: { abbr: "SHSU", name: "Sam Houston", pace: 0.95, def: { pass: 1.15, run: 1.15, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 32.4, cmp: 0.55, ypa: 5.68, pTD: 1, iNT: 0.83, rYd: 23.7, rTD: 0.17 },
+    { name: "Landan Brown", pos: "RB", car: 7, ypc: 5.8, ruTD: 0.42, tgt: 4.3, cr: 0.72, ypr: 6.4, recTD: 0 },
+    { name: "Alton McCaskill", pos: "RB", car: 7.3, ypc: 4.2, ruTD: 0.08, tgt: 1, cr: 0.72, ypr: 7.3, recTD: 0.08 },
+    { name: "Grady O'Neill", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 10.3, recTD: 0.08, wr1: true },
+    { name: "Chris Reed", pos: "WR", tgt: 4.2, cr: 0.6, ypr: 15.3, recTD: 0.42 },
+    { name: "Kamari Maxwell", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 16.7, recTD: 0.33 } ] },
+  SJSU: { abbr: "SJSU", name: "San José St", pace: 1, def: { pass: 1.13, run: 1.05, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 40.8, cmp: 0.56, ypa: 6.92, pTD: 1.42, iNT: 1.42, rYd: 21.5, rTD: 0.23 },
+    { name: "Jabari Bates", pos: "RB", car: 2.3, ypc: 7.11, ruTD: 0.17, tgt: 0.1, cr: 0.72, ypr: 12, recTD: 0 },
+    { name: "Viliami Teu", pos: "RB", car: 1.4, ypc: 4.12, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Jordan Anderson", pos: "WR", tgt: 3.3, cr: 0.6, ypr: 15, recTD: 0, wr1: true },
+    { name: "Cooper Hoch", pos: "WR", tgt: 0.7, cr: 0.6, ypr: 8.6, recTD: 0 } ] },
+  SMU: { abbr: "SMU", name: "SMU", pace: 0.99, def: { pass: 1.15, run: 0.85, cb: 1 }, players: [
+    { name: "Kevin Jennings", pos: "QB", pAtt: 34.9, cmp: 0.66, ypa: 8.02, pTD: 2, iNT: 1, rYd: 4.2, rTD: 0.31 },
+    { name: "Kendrick Raphael", pos: "RB", car: 17.8, ypc: 4.06, ruTD: 1, tgt: 3.6, cr: 0.72, ypr: 7.2, recTD: 0.08 },
+    { name: "Dramekco Green", pos: "RB", car: 1.9, ypc: 3.6, ruTD: 0.08, tgt: 0.2, cr: 0.72, ypr: 4.5, recTD: 0 },
+    { name: "Yamir Knight", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 11.8, recTD: 0.38, wr1: true },
+    { name: "Yannick Smith", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 13.3, recTD: 0.38 },
+    { name: "Jalen Cooper", pos: "WR", tgt: 2.4, cr: 0.6, ypr: 16.9, recTD: 0.15 },
+    { name: "Randy Pittman Jr.", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 9, recTD: 0.15 } ] },
+  STAN: { abbr: "STAN", name: "Stanford", pace: 0.98, def: { pass: 1.15, run: 0.85, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 32.6, cmp: 0.57, ypa: 6.81, pTD: 1.17, iNT: 1, rYd: 15.2, rTD: 0.13 },
+    { name: "Micah Ford", pos: "RB", car: 12.1, ypc: 4.43, ruTD: 0.33, tgt: 1.3, cr: 0.72, ypr: 10.8, recTD: 0 },
+    { name: "Sedrick Irvin", pos: "RB", car: 3.4, ypc: 2.88, ruTD: 0.08, tgt: 0.2, cr: 0.72, ypr: 6.5, recTD: 0 },
+    { name: "Nico Brown", pos: "WR", tgt: 9.9, cr: 0.6, ypr: 15.3, recTD: 0.92, wr1: true },
+    { name: "Caden High", pos: "WR", tgt: 5.1, cr: 0.6, ypr: 11.2, recTD: 0.08 },
+    { name: "Marcus Brown", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 7.2, recTD: 0.08 },
+    { name: "Benji Blackburn", pos: "TE", tgt: 1.2, cr: 0.65, ypr: 12.1, recTD: 0.08 } ] },
+  SYR: { abbr: "SYR", name: "Syracuse", pace: 1.05, def: { pass: 1.15, run: 1.15, cb: 1.1 }, players: [
+    { name: "Amari Odom", pos: "QB", pAtt: 24.3, cmp: 0.65, ypa: 8.91, pTD: 1.58, iNT: 0.67, rYd: 28.9, rTD: 0.58 },
+    { name: "Ahmad Miller", pos: "RB", car: 13.6, ypc: 6.35, ruTD: 0.42, tgt: 0.6, cr: 0.72, ypr: 5.2, recTD: 0 },
+    { name: "Ju'Juan Johnson", pos: "RB", car: 3.4, ypc: 3.78, ruTD: 0.17, tgt: 2, cr: 0.72, ypr: 4.2, recTD: 0 },
+    { name: "Justus Ross-Simmons", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 15.6, recTD: 0.42, wr1: true },
+    { name: "Tyshawn Russell", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 9.2, recTD: 0 },
+    { name: "Darius Johnson", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 8, recTD: 0 },
+    { name: "Noah Meyers", pos: "TE", tgt: 4.1, cr: 0.65, ypr: 11.2, recTD: 0.25 } ] },
+  "TA&M": { abbr: "TA&M", name: "Texas A&M", pace: 1.04, def: { pass: 0.85, run: 0.87, cb: 0.9 }, players: [
+    { name: "Marcel Reed", pos: "QB", pAtt: 29, cmp: 0.62, ypa: 8.41, pTD: 1.92, iNT: 0.92, rYd: 37.9, rTD: 0.46 },
+    { name: "Rueben Owens II", pos: "RB", car: 9.2, ypc: 5.37, ruTD: 0.38, tgt: 1.4, cr: 0.72, ypr: 10, recTD: 0 },
+    { name: "Jamarion Morrow", pos: "RB", car: 3.3, ypc: 4.23, ruTD: 0.08, tgt: 0.6, cr: 0.72, ypr: 13.3, recTD: 0.15 },
+    { name: "Mario Craver", pos: "WR", tgt: 7.6, cr: 0.6, ypr: 15.5, recTD: 0.31, wr1: true },
+    { name: "Isaiah Horton", pos: "WR", tgt: 5.4, cr: 0.6, ypr: 12.2, recTD: 0.62 },
+    { name: "Ashton Bethel-Roman", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 21, recTD: 0.38 },
+    { name: "Richie Anderson III", pos: "TE", tgt: 3.7, cr: 0.65, ypr: 9.7, recTD: 0.23 } ] },
+  TCU: { abbr: "TCU", name: "TCU", pace: 1.03, def: { pass: 1.13, run: 0.89, cb: 1.06 }, players: [
+    { name: "Jaden Craig", pos: "QB", pAtt: 26, cmp: 0.62, ypa: 8.49, pTD: 1.92, iNT: 0.54, rYd: 6, rTD: 0.23 },
+    { name: "Jeremy Payne", pos: "RB", car: 8.5, ypc: 5.66, ruTD: 0.38, tgt: 2.4, cr: 0.72, ypr: 9.4, recTD: 0.15 },
+    { name: "Jon Denman", pos: "RB", car: 3.8, ypc: 3.56, ruTD: 0.23, tgt: 0.3, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Jordan Dwyer", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 13.5, recTD: 0.54, wr1: true },
+    { name: "Jeremy Scott", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 17.4, recTD: 0.31 },
+    { name: "Ed Small", pos: "WR", tgt: 2.1, cr: 0.6, ypr: 11.6, recTD: 0.15 } ] },
+  TEM: { abbr: "TEM", name: "Temple", pace: 0.93, def: { pass: 0.92, run: 1.15, cb: 1.09 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 28.9, cmp: 0.62, ypa: 6.83, pTD: 2.33, iNT: 0.17, rYd: 26.5, rTD: 0.22 },
+    { name: "Hunter Smith", pos: "RB", car: 5.2, ypc: 6.5, ruTD: 0.17, tgt: 0.7, cr: 0.72, ypr: 9, recTD: 0 },
+    { name: "Keveun Mason", pos: "RB", car: 2.3, ypc: 5.96, ruTD: 0.08, tgt: 0.7, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Jayce Freeman", pos: "WR", tgt: 5.7, cr: 0.6, ypr: 18.9, recTD: 0.67, wr1: true },
+    { name: "Colin Chase", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 10.4, recTD: 0.33 },
+    { name: "JoJo Bermudez", pos: "WR", tgt: 5.3, cr: 0.6, ypr: 13.2, recTD: 0.33 },
+    { name: "Peter Clarke", pos: "TE", tgt: 3.8, cr: 0.65, ypr: 16.1, recTD: 0.5 } ] },
+  TENN: { abbr: "TENN", name: "Tennessee", pace: 1.07, def: { pass: 1.12, run: 1.02, cb: 1.02 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 33.6, cmp: 0.67, ypa: 8.71, pTD: 2, iNT: 0.77, rYd: 31.2, rTD: 0.54 },
+    { name: "DeSean Bishop", pos: "RB", car: 14, ypc: 5.91, ruTD: 1.23, tgt: 1.6, cr: 0.72, ypr: 9, recTD: 0 },
+    { name: "Javin Gordon", pos: "RB", car: 9.8, ypc: 4.03, ruTD: 0.38, tgt: 1.4, cr: 0.72, ypr: 7.2, recTD: 0.08 },
+    { name: "Braylon Staley", pos: "WR", tgt: 8.7, cr: 0.6, ypr: 12.3, recTD: 0.46, wr1: true },
+    { name: "Mike Matthews", pos: "WR", tgt: 6.8, cr: 0.6, ypr: 15.3, recTD: 0.31 },
+    { name: "Ian Duarte", pos: "WR", tgt: 5.9, cr: 0.6, ypr: 11.3, recTD: 0.23 },
+    { name: "Ethan Davis", pos: "TE", tgt: 2.5, cr: 0.65, ypr: 12.2, recTD: 0.15 } ] },
+  TEX: { abbr: "TEX", name: "Texas", pace: 0.97, def: { pass: 1.08, run: 0.85, cb: 0.93 }, players: [
+    { name: "Arch Manning", pos: "QB", pAtt: 31.1, cmp: 0.61, ypa: 7.83, pTD: 2, iNT: 0.54, rYd: 30.7, rTD: 0.77 },
+    { name: "Raleek Brown", pos: "RB", car: 14.3, ypc: 6.13, ruTD: 0.31, tgt: 3.6, cr: 0.72, ypr: 7, recTD: 0.15 },
+    { name: "Hollywood Smothers", pos: "RB", car: 12.3, ypc: 5.87, ruTD: 0.46, tgt: 4, cr: 0.72, ypr: 5.1, recTD: 0.08 },
+    { name: "Cam Coleman", pos: "WR", tgt: 7.2, cr: 0.6, ypr: 12.6, recTD: 0.38, wr1: true },
+    { name: "Sterling Berkhalter", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 13.9, recTD: 0.15 },
+    { name: "Emmett Mosley V", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 14.6, recTD: 0.23 },
+    { name: "Michael Masunas", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 12.2, recTD: 0.23 } ] },
+  TLSA: { abbr: "TLSA", name: "Tulsa", pace: 1.1, def: { pass: 0.99, run: 1.15, cb: 1.05 }, players: [
+    { name: "Baylor Hayes", pos: "QB", pAtt: 26.3, cmp: 0.59, ypa: 6.83, pTD: 1, iNT: 0.5, rYd: 15.8, rTD: 0.25 },
+    { name: "DJ McKinney", pos: "RB", car: 9.3, ypc: 4.18, ruTD: 0.58, tgt: 1.7, cr: 0.72, ypr: 10.7, recTD: 0 },
+    { name: "Trequan Jones", pos: "RB", car: 8.8, ypc: 7.54, ruTD: 0.5, tgt: 0.7, cr: 0.72, ypr: 3.3, recTD: 0 },
+    { name: "Javon Ross", pos: "WR", tgt: 7.2, cr: 0.6, ypr: 13.2, recTD: 0.33, wr1: true },
+    { name: "Grayson Tempest", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 12.4, recTD: 0.08 },
+    { name: "Josh Smith", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 22.3, recTD: 0.08 } ] },
+  TOL: { abbr: "TOL", name: "Toledo", pace: 1, def: { pass: 0.85, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.7, cmp: 0.64, ypa: 7.76, pTD: 2.08, iNT: 0.77, rYd: 31.9, rTD: 0.34 },
+    { name: "CJ Miller", pos: "RB", car: 12.9, ypc: 5.67, ruTD: 1.08, tgt: 2.8, cr: 0.72, ypr: 12.1, recTD: 0.23 },
+    { name: "Corey Smith", pos: "RB", car: 1.1, ypc: 2.5, ruTD: 0, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Rico Bond", pos: "WR", tgt: 7.7, cr: 0.6, ypr: 11.6, recTD: 0.46, wr1: true },
+    { name: "Kalvin Gilbert Jr.", pos: "WR", tgt: 5.9, cr: 0.6, ypr: 14.2, recTD: 0.54 },
+    { name: "Adjatay Dabbs", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 19, recTD: 0.62 },
+    { name: "Peyton Strickland", pos: "TE", tgt: 2.8, cr: 0.65, ypr: 9.4, recTD: 0.31 } ] },
+  TROY: { abbr: "TROY", name: "Troy", pace: 0.99, def: { pass: 0.9, run: 1.15, cb: 1 }, players: [
+    { name: "Tucker Kilcrease", pos: "QB", pAtt: 15.9, cmp: 0.59, ypa: 6.92, pTD: 0.64, iNT: 0.43, rYd: 9, rTD: 0.36 },
+    { name: "Jordan Lovett", pos: "RB", car: 6.4, ypc: 3.81, ruTD: 0.14, tgt: 1.3, cr: 0.72, ypr: 6.6, recTD: 0 },
+    { name: "TJ Lott", pos: "WR", tgt: 1, cr: 0.6, ypr: 10.5, recTD: 0.07, wr1: true },
+    { name: "Mojo Dortch", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 9, recTD: 0 } ] },
+  TTU: { abbr: "TTU", name: "Texas Tech", pace: 1.1, def: { pass: 0.87, run: 0.85, cb: 0.9 }, players: [
+    { name: "Thomas Castellanos", pos: "QB", pAtt: 22.1, cmp: 0.58, ypa: 8.93, pTD: 1.07, iNT: 0.64, rYd: 39.8, rTD: 0.64 },
+    { name: "Cameron Dickey", pos: "RB", car: 14.9, ypc: 5.38, ruTD: 1, tgt: 2.5, cr: 0.72, ypr: 9, recTD: 0.14 },
+    { name: "Jalen Jones", pos: "WR", tgt: 6.1, cr: 0.6, ypr: 22.9, recTD: 0.64, wr1: true },
+    { name: "Coy Eakin", pos: "WR", tgt: 5.7, cr: 0.6, ypr: 13.3, recTD: 0.43 },
+    { name: "Kenny Johnson", pos: "WR", tgt: 5.7, cr: 0.6, ypr: 14.5, recTD: 0.36 },
+    { name: "Terrance Carter Jr.", pos: "TE", tgt: 6, cr: 0.65, ypr: 11.3, recTD: 0.36 } ] },
+  TULN: { abbr: "TULN", name: "Tulane", pace: 1, def: { pass: 1.15, run: 0.85, cb: 1.08 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.4, cmp: 0.62, ypa: 8.08, pTD: 1.29, iNT: 0.64, rYd: 29.9, rTD: 0.37 },
+    { name: "Jamauri McClure", pos: "RB", car: 5.9, ypc: 6.51, ruTD: 0.14, tgt: 0.3, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Jaylin Lucas", pos: "RB", car: 1.9, ypc: 5.93, ruTD: 0, tgt: 1.1, cr: 0.72, ypr: 8, recTD: 0 },
+    { name: "Anthony Brown-Stephens", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 12.8, recTD: 0.14, wr1: true },
+    { name: "Zycarl Lewis Jr.", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 13.8, recTD: 0.14 },
+    { name: "Garrett Mmahat", pos: "WR", tgt: 1.2, cr: 0.6, ypr: 12.4, recTD: 0 },
+    { name: "Dawson Johnson", pos: "TE", tgt: 1.1, cr: 0.65, ypr: 9.9, recTD: 0.07 } ] },
+  TXST: { abbr: "TXST", name: "Texas St", pace: 1.06, def: { pass: 1, run: 1.1, cb: 1 }, players: [
+    { name: "Brad Jackson", pos: "QB", pAtt: 27.1, cmp: 0.71, ypa: 9.16, pTD: 1.62, iNT: 0.54, rYd: 57.2, rTD: 1.31 },
+    { name: "Jaylen Jenkins", pos: "RB", car: 2.4, ypc: 5.48, ruTD: 0.15, tgt: 0.1, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Torrance Burgess Jr.", pos: "RB", car: 1.5, ypc: 4.75, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Beau Sparks", pos: "WR", tgt: 10.8, cr: 0.6, ypr: 14.3, recTD: 0.77, wr1: true },
+    { name: "Chris Dawn Jr.", pos: "WR", tgt: 8.3, cr: 0.6, ypr: 15.5, recTD: 0.31 },
+    { name: "Kylen Evans", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 14.1, recTD: 0.08 },
+    { name: "Blake Smith", pos: "TE", tgt: 1.2, cr: 0.65, ypr: 10.5, recTD: 0 } ] },
+  UAB: { abbr: "UAB", name: "UAB", pace: 1.04, def: { pass: 1.07, run: 1.15, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 36.4, cmp: 0.66, ypa: 7.29, pTD: 1.67, iNT: 1.25, rYd: 25, rTD: 0.33 },
+    { name: "Ja'Vin Simpkins", pos: "RB", car: 10.4, ypc: 4.73, ruTD: 0.17, tgt: 2, cr: 0.72, ypr: 4.4, recTD: 0 },
+    { name: "Bam McReynolds", pos: "RB", car: 10.3, ypc: 5.18, ruTD: 0.25, tgt: 1.9, cr: 0.72, ypr: 5.6, recTD: 0.08 },
+    { name: "Kaleb Brown", pos: "WR", tgt: 2.4, cr: 0.6, ypr: 15, recTD: 0.17, wr1: true },
+    { name: "Antonio Ferguson", pos: "TE", tgt: 1.3, cr: 0.65, ypr: 11.5, recTD: 0 } ] },
+  UCF: { abbr: "UCF", name: "UCF", pace: 0.99, def: { pass: 0.85, run: 1, cb: 0.94 }, players: [
+    { name: "Alonza Barnett III", pos: "QB", pAtt: 30.8, cmp: 0.58, ypa: 7.58, pTD: 1.92, iNT: 0.67, rYd: 49.1, rTD: 1.25 },
+    { name: "Landen Chambers", pos: "RB", car: 20.2, ypc: 5.26, ruTD: 0.83, tgt: 3.1, cr: 0.72, ypr: 8.8, recTD: 0 },
+    { name: "Agyeman Addae", pos: "RB", car: 1, ypc: 4.17, ruTD: 0, tgt: 0.8, cr: 0.72, ypr: 10, recTD: 0.08 },
+    { name: "Josh Derry", pos: "WR", tgt: 10.1, cr: 0.6, ypr: 15.1, recTD: 1.08, wr1: true },
+    { name: "Jonathan Bibbs", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 14.7, recTD: 0.25 },
+    { name: "Waden Charles", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 11.2, recTD: 0 },
+    { name: "Grayson Brousseau", pos: "TE", tgt: 0.9, cr: 0.65, ypr: 6.4, recTD: 0 } ] },
+  UCLA: { abbr: "UCLA", name: "UCLA", pace: 0.92, def: { pass: 0.9, run: 1.15, cb: 1.02 }, players: [
+    { name: "Nico Iamaleava", pos: "QB", pAtt: 26.9, cmp: 0.64, ypa: 5.97, pTD: 1.08, iNT: 0.58, rYd: 42.1, rTD: 0.33 },
+    { name: "Wayne Knight", pos: "RB", car: 17.3, ypc: 6.63, ruTD: 0.75, tgt: 4.6, cr: 0.72, ypr: 9.9, recTD: 0.08 },
+    { name: "Dylan Lee", pos: "RB", car: 2.1, ypc: 4.68, ruTD: 0.08, tgt: 0.1, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Landon Ellis", pos: "WR", tgt: 5, cr: 0.6, ypr: 17.3, recTD: 0.42, wr1: true },
+    { name: "Mikey Matthews", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 10.5, recTD: 0.17 },
+    { name: "Semaj Morgan", pos: "WR", tgt: 2.8, cr: 0.6, ypr: 11.2, recTD: 0.08 },
+    { name: "Brayden Loftin", pos: "TE", tgt: 0.8, cr: 0.65, ypr: 9.2, recTD: 0 } ] },
+  UGA: { abbr: "UGA", name: "Georgia", pace: 1.06, def: { pass: 1, run: 0.85, cb: 0.93 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 29.8, cmp: 0.69, ypa: 7.39, pTD: 1.79, iNT: 0.5, rYd: 32.8, rTD: 0.44 },
+    { name: "Nate Frazier", pos: "RB", car: 12.4, ypc: 5.47, ruTD: 0.43, tgt: 1.6, cr: 0.72, ypr: 7.3, recTD: 0.07 },
+    { name: "Dante Dowdell", pos: "RB", car: 8, ypc: 5, ruTD: 0.21, tgt: 0.7, cr: 0.72, ypr: 4.3, recTD: 0 },
+    { name: "Isiah Canion", pos: "WR", tgt: 3.9, cr: 0.6, ypr: 14.5, recTD: 0.29, wr1: true },
+    { name: "London Humphreys", pos: "WR", tgt: 2.1, cr: 0.6, ypr: 15.3, recTD: 0.21 },
+    { name: "Lawson Luckie", pos: "TE", tgt: 1.6, cr: 0.65, ypr: 10.5, recTD: 0.29 } ] },
+  UK: { abbr: "UK", name: "Kentucky", pace: 1, def: { pass: 1.1, run: 0.89, cb: 1.1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.7, cmp: 0.62, ypa: 6.58, pTD: 1.25, iNT: 1.17, rYd: 25, rTD: 0.32 },
+    { name: "Jason Patterson", pos: "RB", car: 4.8, ypc: 3.95, ruTD: 0.08, tgt: 2, cr: 0.72, ypr: 5, recTD: 0.08 },
+    { name: "CJ Baxter", pos: "RB", car: 4.5, ypc: 3.63, ruTD: 0, tgt: 1.4, cr: 0.72, ypr: 3.4, recTD: 0.08 },
+    { name: "Shane Carr", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 14.9, recTD: 0.33, wr1: true },
+    { name: "Xavier Daisy", pos: "WR", tgt: 2.5, cr: 0.6, ypr: 9.8, recTD: 0.08 },
+    { name: "DJ Miller", pos: "WR", tgt: 1.8, cr: 0.6, ypr: 13.5, recTD: 0.17 },
+    { name: "Willie Rodriguez", pos: "TE", tgt: 2.9, cr: 0.65, ypr: 13.5, recTD: 0.08 } ] },
+  UL: { abbr: "UL", name: "Louisiana", pace: 0.99, def: { pass: 1.03, run: 1.15, cb: 1.09 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 26.4, cmp: 0.55, ypa: 6.14, pTD: 0.92, iNT: 1.08, rYd: 33, rTD: 0.4 },
+    { name: "Anthony Reagan Jr.", pos: "RB", car: 9.4, ypc: 5.5, ruTD: 0.69, tgt: 2.6, cr: 0.72, ypr: 8.4, recTD: 0.08 },
+    { name: "Steven Blanco", pos: "RB", car: 2.3, ypc: 5.2, ruTD: 0.15, tgt: 0.1, cr: 0.72, ypr: 16, recTD: 0 },
+    { name: "Shelton Sampson Jr.", pos: "WR", tgt: 4.1, cr: 0.6, ypr: 16.8, recTD: 0.46, wr1: true },
+    { name: "Landon Strother", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 7.8, recTD: 0 },
+    { name: "Jaydon Johnson", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 8.5, recTD: 0 },
+    { name: "Caden Jensen", pos: "TE", tgt: 3.4, cr: 0.65, ypr: 8, recTD: 0.08 } ] },
+  ULM: { abbr: "ULM", name: "UL Monroe", pace: 0.91, def: { pass: 1.02, run: 1.08, cb: 1.06 }, players: [
+    { name: "Aidan Armenta", pos: "QB", pAtt: 21.1, cmp: 0.58, ypa: 6.44, pTD: 1, iNT: 0.67, rYd: 4.8, rTD: 0.17 },
+    { name: "Nic Trujillo", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 16, recTD: 0.33, wr1: true },
+    { name: "JP Coulter", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 11.1, recTD: 0 },
+    { name: "Cade Callahan", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 14.7, recTD: 0.25 } ] },
+  UNC: { abbr: "UNC", name: "North Carolina", pace: 0.9, def: { pass: 0.97, run: 0.85, cb: 0.93 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 29.6, cmp: 0.64, ypa: 6.2, pTD: 1.08, iNT: 0.5, rYd: 18.9, rTD: 0.18 },
+    { name: "Demon June", pos: "RB", car: 7, ypc: 5.52, ruTD: 0.17, tgt: 2, cr: 0.72, ypr: 9.4, recTD: 0.08 },
+    { name: "Benjamin Hall", pos: "RB", car: 5.9, ypc: 3.86, ruTD: 0.17, tgt: 0.9, cr: 0.72, ypr: 4.3, recTD: 0 },
+    { name: "Jordan Shipp", pos: "WR", tgt: 8.3, cr: 0.6, ypr: 11.2, recTD: 0.5, wr1: true },
+    { name: "Mason Humphrey", pos: "WR", tgt: 4.9, cr: 0.6, ypr: 18.6, recTD: 0.33 },
+    { name: "Trech Kekahuna", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 8.1, recTD: 0 },
+    { name: "Jelani Thurman", pos: "TE", tgt: 0.9, cr: 0.65, ypr: 12, recTD: 0.08 } ] },
+  UNLV: { abbr: "UNLV", name: "UNLV", pace: 0.98, def: { pass: 1.11, run: 1.15, cb: 1.08 }, players: [
+    { name: "Jackson Arnold", pos: "QB", pAtt: 15.4, cmp: 0.63, ypa: 6.09, pTD: 0.43, iNT: 0.14, rYd: 22.2, rTD: 0.57 },
+    { name: "Jai'Den Thomas", pos: "RB", car: 10.6, ypc: 7, ruTD: 0.86, tgt: 3.9, cr: 0.72, ypr: 6.1, recTD: 0.07 },
+    { name: "Jaylon Glover", pos: "RB", car: 4.6, ypc: 6, ruTD: 0.07, tgt: 0.6, cr: 0.72, ypr: 8.5, recTD: 0 },
+    { name: "Taz Reddicks", pos: "WR", tgt: 3.6, cr: 0.6, ypr: 13, recTD: 0, wr1: true },
+    { name: "DeAngelo Irvin Jr.", pos: "WR", tgt: 2.1, cr: 0.6, ypr: 10.4, recTD: 0.07 },
+    { name: "Taeshaun Lyons", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 15.1, recTD: 0.21 } ] },
+  UNM: { abbr: "UNM", name: "New Mexico", pace: 0.94, def: { pass: 1.05, run: 0.85, cb: 1.02 }, players: [
+    { name: "Jack Layne", pos: "QB", pAtt: 25.2, cmp: 0.65, ypa: 7.6, pTD: 1, iNT: 0.77, rYd: 11.7, rTD: 0.31 },
+    { name: "Scottre Humphrey", pos: "RB", car: 5.9, ypc: 4.53, ruTD: 0.38, tgt: 0.3, cr: 0.72, ypr: 7.3, recTD: 0.08 },
+    { name: "Kiefer Sibley", pos: "RB", car: 3.5, ypc: 6.09, ruTD: 0.38, tgt: 0.3, cr: 0.72, ypr: 11.3, recTD: 0 },
+    { name: "Troy Omeire", pos: "WR", tgt: 4, cr: 0.6, ypr: 16.6, recTD: 0.38, wr1: true },
+    { name: "Shawn Miller", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 13.3, recTD: 0.08 },
+    { name: "Zhaiel Smith", pos: "WR", tgt: 1, cr: 0.6, ypr: 14, recTD: 0 },
+    { name: "Cade Keith", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 12.7, recTD: 0.23 } ] },
+  UNT: { abbr: "UNT", name: "North Texas", pace: 1.06, def: { pass: 0.85, run: 1.15, cb: 0.9 }, players: [
+    { name: "Tayven Jackson", pos: "QB", pAtt: 22.5, cmp: 0.63, ypa: 6.83, pTD: 0.71, iNT: 0.57, rYd: 6.1, rTD: 0.21 },
+    { name: "Nick Osho", pos: "RB", car: 8.5, ypc: 5.76, ruTD: 0.57, tgt: 1, cr: 0.72, ypr: 4.2, recTD: 0.07 },
+    { name: "Jahiem White", pos: "RB", car: 1.7, ypc: 5.54, ruTD: 0.21, tgt: 0.3, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "James Tyre", pos: "WR", tgt: 8.1, cr: 0.6, ypr: 12.2, recTD: 0.79, wr1: true },
+    { name: "Grayson O'Bara", pos: "WR", tgt: 5.2, cr: 0.6, ypr: 13.4, recTD: 0.14 },
+    { name: "Corri Milliner", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 14.2, recTD: 0.21 } ] },
+  USA: { abbr: "USA", name: "South Alabama", pace: 1.05, def: { pass: 0.94, run: 1.15, cb: 1.02 }, players: [
+    { name: "Bishop Davenport", pos: "QB", pAtt: 24.5, cmp: 0.68, ypa: 7.05, pTD: 1, iNT: 0.5, rYd: 27.1, rTD: 0.75 },
+    { name: "Keenan Phillips", pos: "RB", car: 10.5, ypc: 4.8, ruTD: 0.25, tgt: 1.2, cr: 0.72, ypr: 5.8, recTD: 0 },
+    { name: "PJ Martin", pos: "RB", car: 5, ypc: 5.43, ruTD: 0.17, tgt: 0.6, cr: 0.72, ypr: 9.8, recTD: 0 },
+    { name: "Anthony Eager", pos: "WR", tgt: 5.6, cr: 0.6, ypr: 8.5, recTD: 0.08, wr1: true },
+    { name: "Brendan Jenkins", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 13, recTD: 0.08 },
+    { name: "Everett Hunter", pos: "TE", tgt: 3.1, cr: 0.65, ypr: 11.8, recTD: 0.25 } ] },
+  USC: { abbr: "USC", name: "USC", pace: 0.97, def: { pass: 0.95, run: 0.95, cb: 0.97 }, players: [
+    { name: "Jayden Maiava", pos: "QB", pAtt: 31, cmp: 0.66, ypa: 9.21, pTD: 1.85, iNT: 0.77, rYd: 12.1, rTD: 0.46 },
+    { name: "King Miller", pos: "RB", car: 12, ypc: 6.23, ruTD: 0.62, tgt: 1.7, cr: 0.72, ypr: 6.9, recTD: 0 },
+    { name: "Waymond Jordan", pos: "RB", car: 6.8, ypc: 6.55, ruTD: 0.38, tgt: 0.7, cr: 0.72, ypr: 7.9, recTD: 0 },
+    { name: "Terrell Anderson", pos: "WR", tgt: 5, cr: 0.6, ypr: 16.1, recTD: 0.38, wr1: true },
+    { name: "Tanook Hines", pos: "WR", tgt: 4.4, cr: 0.6, ypr: 16.5, recTD: 0.15 } ] },
+  USF: { abbr: "USF", name: "South Florida", pace: 1.05, def: { pass: 1.12, run: 0.96, cb: 0.93 }, players: [
+    { name: "KJ Cooper", pos: "QB", pAtt: 19.7, cmp: 0.61, ypa: 6.29, pTD: 1, iNT: 0.46, rYd: 20.9, rTD: 0.23 },
+    { name: "D.J. Crowther", pos: "RB", car: 14.7, ypc: 4.86, ruTD: 0.77, tgt: 1.7, cr: 0.72, ypr: 7.5, recTD: 0 },
+    { name: "Jason Collins Jr.", pos: "RB", car: 8.2, ypc: 3.94, ruTD: 0.46, tgt: 1.5, cr: 0.72, ypr: 4.4, recTD: 0 },
+    { name: "Kenny Odom", pos: "WR", tgt: 7.9, cr: 0.6, ypr: 9.4, recTD: 0.46, wr1: true },
+    { name: "Mudia Reuben", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 13.8, recTD: 0.38 },
+    { name: "Cameron Seldon", pos: "WR", tgt: 2.9, cr: 0.6, ypr: 7.2, recTD: 0.15 },
+    { name: "Wyatt Sullivan", pos: "TE", tgt: 2.1, cr: 0.65, ypr: 9.8, recTD: 0.15 } ] },
+  USM: { abbr: "USM", name: "Southern Miss", pace: 1.06, def: { pass: 1.05, run: 1.15, cb: 0.98 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 34.9, cmp: 0.64, ypa: 7.62, pTD: 2, iNT: 0.85, rYd: 24.5, rTD: 0.28 },
+    { name: "Brandon Hood", pos: "RB", car: 7.5, ypc: 3.76, ruTD: 0.15, tgt: 1.2, cr: 0.72, ypr: 8, recTD: 0 },
+    { name: "Robert Briggs", pos: "RB", car: 4.8, ypc: 4.9, ruTD: 0.08, tgt: 1.4, cr: 0.72, ypr: 7.3, recTD: 0.08 },
+    { name: "AJ Little", pos: "WR", tgt: 3.5, cr: 0.6, ypr: 12.8, recTD: 0.08, wr1: true },
+    { name: "Preston Kilgore", pos: "TE", tgt: 0.8, cr: 0.65, ypr: 6.9, recTD: 0 } ] },
+  USU: { abbr: "USU", name: "Utah State", pace: 0.98, def: { pass: 1.15, run: 1.15, cb: 0.99 }, players: [
+    { name: "Bryson Barnes", pos: "QB", pAtt: 27.4, cmp: 0.59, ypa: 7.87, pTD: 1.38, iNT: 0.38, rYd: 56.9, rTD: 0.77 },
+    { name: "Javen Jacobs", pos: "RB", car: 5, ypc: 6.6, ruTD: 0.38, tgt: 4.6, cr: 0.72, ypr: 8.8, recTD: 0.23 },
+    { name: "Anthony Garcia", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 17.4, recTD: 0.15, wr1: true },
+    { name: "Kahanu Davis", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 24, recTD: 0.08 },
+    { name: "Broc Lane", pos: "TE", tgt: 2.2, cr: 0.65, ypr: 11.5, recTD: 0.15 } ] },
+  UTAH: { abbr: "UTAH", name: "Utah", pace: 1.09, def: { pass: 0.85, run: 1.15, cb: 0.9 }, players: [
+    { name: "Devon Dampier", pos: "QB", pAtt: 25.7, cmp: 0.63, ypa: 7.46, pTD: 1.85, iNT: 0.38, rYd: 64.2, rTD: 0.77 },
+    { name: "Wayshawn Parker", pos: "RB", car: 11.5, ypc: 6.58, ruTD: 0.46, tgt: 1.4, cr: 0.72, ypr: 14.2, recTD: 0.23 },
+    { name: "Steve Chavez-Soto", pos: "RB", car: 6.7, ypc: 5.15, ruTD: 0.54, tgt: 0.3, cr: 0.72, ypr: 5, recTD: 0 },
+    { name: "Braden Pegan", pos: "WR", tgt: 7.7, cr: 0.6, ypr: 15.4, recTD: 0.38, wr1: true },
+    { name: "Kyri Shoels", pos: "WR", tgt: 7.6, cr: 0.6, ypr: 13, recTD: 0.15 },
+    { name: "Larry Simmons", pos: "WR", tgt: 1.9, cr: 0.6, ypr: 18.7, recTD: 0.46 },
+    { name: "Noah Bennee", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 11.5, recTD: 0 } ] },
+  UTEP: { abbr: "UTEP", name: "UTEP", pace: 0.98, def: { pass: 1.02, run: 1.13, cb: 0.99 }, players: [
+    { name: "EJ Colson Jr.", pos: "QB", pAtt: 24.7, cmp: 0.71, ypa: 7.24, pTD: 1.33, iNT: 0.33, rYd: 23.9, rTD: 0.25 },
+    { name: "Lamar Sperling", pos: "RB", car: 3.3, ypc: 6, ruTD: 0.08, tgt: 0.3, cr: 0.72, ypr: 4, recTD: 0 },
+    { name: "Kam Thomas", pos: "RB", car: 1.3, ypc: 2.5, ruTD: 0, tgt: 0.5, cr: 0.72, ypr: 6.5, recTD: 0 },
+    { name: "Carver Cheeks", pos: "WR", tgt: 9.9, cr: 0.6, ypr: 13.1, recTD: 0.5, wr1: true },
+    { name: "Jaylan Brown", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 10.3, recTD: 0 },
+    { name: "Royal Capell", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 4.7, recTD: 0 } ] },
+  UTSA: { abbr: "UTSA", name: "UTSA", pace: 1.03, def: { pass: 1.02, run: 1, cb: 1.04 }, players: [
+    { name: "Owen McCown", pos: "QB", pAtt: 31.5, cmp: 0.68, ypa: 7.3, pTD: 2.31, iNT: 0.54, rYd: 1.8, rTD: 0.08 },
+    { name: "Will Henderson III", pos: "RB", car: 9.6, ypc: 6.93, ruTD: 0.46, tgt: 2, cr: 0.72, ypr: 6.9, recTD: 0.15 },
+    { name: "A'Marion Peterson", pos: "RB", car: 3.8, ypc: 3.61, ruTD: 0.23, tgt: 0.2, cr: 0.72, ypr: 3.5, recTD: 0 },
+    { name: "David Amador II", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 9.8, recTD: 0.31, wr1: true },
+    { name: "DJ Allen Jr.", pos: "WR", tgt: 2.6, cr: 0.6, ypr: 9.5, recTD: 0.23 },
+    { name: "Jamel Hardy Jr.", pos: "WR", tgt: 1.7, cr: 0.6, ypr: 10.2, recTD: 0.08 },
+    { name: "Miles Campbell", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 14.3, recTD: 0.15 } ] },
+  UVA: { abbr: "UVA", name: "Virginia", pace: 1.1, def: { pass: 0.9, run: 0.85, cb: 0.94 }, players: [
+    { name: "Beau Pribula", pos: "QB", pAtt: 19.3, cmp: 0.67, ypa: 7.19, pTD: 0.79, iNT: 0.64, rYd: 21.2, rTD: 0.43 },
+    { name: "Jekail Middlebrook", pos: "RB", car: 10, ypc: 5.37, ruTD: 0.29, tgt: 4, cr: 0.72, ypr: 10.3, recTD: 0.21 },
+    { name: "Solomon Beebe", pos: "RB", car: 4, ypc: 6.04, ruTD: 0.43, tgt: 3.1, cr: 0.72, ypr: 9.2, recTD: 0 },
+    { name: "Jacquon Gibson", pos: "WR", tgt: 7.5, cr: 0.6, ypr: 9.8, recTD: 0, wr1: true },
+    { name: "Da'Shawn Martin", pos: "WR", tgt: 3.9, cr: 0.6, ypr: 15.4, recTD: 0.29 },
+    { name: "Rico Flores Jr.", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 10.5, recTD: 0 },
+    { name: "John Rogers", pos: "TE", tgt: 1, cr: 0.65, ypr: 11.2, recTD: 0.07 } ] },
+  VAN: { abbr: "VAN", name: "Vanderbilt", pace: 0.93, def: { pass: 1.15, run: 0.85, cb: 1 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 30.8, cmp: 0.7, ypa: 9.34, pTD: 2.31, iNT: 0.62, rYd: 31.6, rTD: 0.54 },
+    { name: "Sedrick Alexander", pos: "RB", car: 8.1, ypc: 5.4, ruTD: 0.85, tgt: 2, cr: 0.72, ypr: 10.5, recTD: 0.31 },
+    { name: "Junior Sherrill", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 14.5, recTD: 0.54, wr1: true },
+    { name: "Tristen Brown", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 13.7, recTD: 0 },
+    { name: "Kayleb Barnett", pos: "WR", tgt: 0.8, cr: 0.6, ypr: 8.8, recTD: 0.08 },
+    { name: "Jayvontay Conner", pos: "TE", tgt: 2.7, cr: 0.65, ypr: 14.5, recTD: 0.23 } ] },
+  VT: { abbr: "VT", name: "Virginia Tech", pace: 0.95, def: { pass: 1.03, run: 1.02, cb: 1.1 }, players: [
+    { name: "Ethan Grunkemeyer", pos: "QB", pAtt: 14.8, cmp: 0.69, ypa: 7.52, pTD: 0.67, iNT: 0.33, rYd: -3.8, rTD: 0.08 },
+    { name: "Bill Davis", pos: "RB", car: 13.2, ypc: 4.85, ruTD: 0.5, tgt: 1.2, cr: 0.72, ypr: 7.9, recTD: 0 },
+    { name: "Marcellous Hawkins Jr.", pos: "RB", car: 9.8, ypc: 6.35, ruTD: 0.08, tgt: 1.4, cr: 0.72, ypr: 6.2, recTD: 0.08 },
+    { name: "Que'Sean Brown", pos: "WR", tgt: 8.9, cr: 0.6, ypr: 13.2, recTD: 0.42, wr1: true },
+    { name: "Ayden Greene", pos: "WR", tgt: 4.3, cr: 0.6, ypr: 16.6, recTD: 0.25 },
+    { name: "Takye Heath", pos: "WR", tgt: 3.1, cr: 0.6, ypr: 9.1, recTD: 0.25 },
+    { name: "Luke Reynolds", pos: "TE", tgt: 3.3, cr: 0.65, ypr: 9.9, recTD: 0 } ] },
+  WAKE: { abbr: "WAKE", name: "Wake Forest", pace: 0.99, def: { pass: 0.95, run: 0.85, cb: 0.9 }, players: [
+    { name: "Gio Lopez", pos: "QB", pAtt: 20.1, cmp: 0.65, ypa: 6.69, pTD: 0.77, iNT: 0.38, rYd: 10.2, rTD: 0.23 },
+    { name: "Sawyer Seidl", pos: "RB", car: 14.5, ypc: 4.77, ruTD: 1, tgt: 2, cr: 0.72, ypr: 9.3, recTD: 0.31 },
+    { name: "Ty Clark III", pos: "RB", car: 5.8, ypc: 4.31, ruTD: 0.23, tgt: 1.8, cr: 0.72, ypr: 12.3, recTD: 0.08 },
+    { name: "Carlos Hernandez", pos: "WR", tgt: 5.1, cr: 0.6, ypr: 15.3, recTD: 0.23, wr1: true },
+    { name: "Drayden Dickmann", pos: "WR", tgt: 4.7, cr: 0.6, ypr: 8.7, recTD: 0.23 },
+    { name: "Wondame Davis Jr.", pos: "WR", tgt: 3.3, cr: 0.6, ypr: 23.5, recTD: 0.46 },
+    { name: "Kamrean Johnson", pos: "TE", tgt: 1.3, cr: 0.65, ypr: 11.1, recTD: 0.08 } ] },
+  WASH: { abbr: "WASH", name: "Washington", pace: 0.96, def: { pass: 0.97, run: 0.85, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 28.5, cmp: 0.69, ypa: 8.59, pTD: 2, iNT: 0.62, rYd: 29.8, rTD: 0.46 },
+    { name: "Jayden Limar", pos: "RB", car: 3.5, ypc: 5.7, ruTD: 0.23, tgt: 1.2, cr: 0.72, ypr: 6.8, recTD: 0 },
+    { name: "Jordan Washington", pos: "RB", car: 2.1, ypc: 8, ruTD: 0.08, tgt: 0, cr: 0.72, ypr: 7, recTD: 0 },
+    { name: "Christian Moss", pos: "WR", tgt: 5.8, cr: 0.6, ypr: 15.3, recTD: 0.15, wr1: true },
+    { name: "Dezmen Roebuck", pos: "WR", tgt: 5.4, cr: 0.6, ypr: 13.3, recTD: 0.54 },
+    { name: "Chris Lawson", pos: "WR", tgt: 1.3, cr: 0.6, ypr: 11.5, recTD: 0 },
+    { name: "Decker DeGraaf", pos: "TE", tgt: 3.8, cr: 0.65, ypr: 11.3, recTD: 0.15 } ] },
+  WIS: { abbr: "WIS", name: "Wisconsin", pace: 0.9, def: { pass: 1, run: 0.85, cb: 1.08 }, players: [
+    { name: "Colton Joseph", pos: "QB", pAtt: 24.2, cmp: 0.6, ypa: 9.05, pTD: 1.75, iNT: 0.83, rYd: 83.9, rTD: 1.08 },
+    { name: "Abu Sama III", pos: "RB", car: 11.7, ypc: 5.23, ruTD: 0.42, tgt: 0.6, cr: 0.72, ypr: 3.8, recTD: 0 },
+    { name: "Darrion Dupree", pos: "RB", car: 6.9, ypc: 4.37, ruTD: 0.17, tgt: 0.8, cr: 0.72, ypr: 4, recTD: 0 },
+    { name: "Jaylon Domingeaux", pos: "WR", tgt: 7.2, cr: 0.6, ypr: 16.5, recTD: 0.92, wr1: true },
+    { name: "Shamar Rigby", pos: "WR", tgt: 3.5, cr: 0.6, ypr: 14, recTD: 0.08 },
+    { name: "Chris Brooks Jr.", pos: "WR", tgt: 1.5, cr: 0.6, ypr: 11.3, recTD: 0 },
+    { name: "Jacob Harris", pos: "TE", tgt: 2.4, cr: 0.65, ypr: 9.6, recTD: 0.42 } ] },
+  WKU: { abbr: "WKU", name: "Western KY", pace: 1.04, def: { pass: 1.03, run: 1.15, cb: 0.9 }, players: [
+    { name: "Team QB", pos: "QB", pAtt: 38.1, cmp: 0.66, ypa: 7.15, pTD: 1.62, iNT: 1, rYd: 24.2, rTD: 0.35 },
+    { name: "Sincere Baines", pos: "RB", car: 9.5, ypc: 5.78, ruTD: 0.23, tgt: 1.4, cr: 0.72, ypr: 3.5, recTD: 0.08 },
+    { name: "Ajay Allen", pos: "RB", car: 7.5, ypc: 5.1, ruTD: 0.38, tgt: 1.1, cr: 0.72, ypr: 9.8, recTD: 0 },
+    { name: "Jyziah Rockwell", pos: "WR", tgt: 9.2, cr: 0.6, ypr: 15.7, recTD: 0.54, wr1: true },
+    { name: "K.D. Hutchinson", pos: "WR", tgt: 8.5, cr: 0.6, ypr: 9.4, recTD: 0.23 },
+    { name: "Moussa Barry", pos: "WR", tgt: 4.4, cr: 0.6, ypr: 14.4, recTD: 0.08 } ] },
+  WMU: { abbr: "WMU", name: "W Michigan", pace: 0.99, def: { pass: 0.85, run: 0.85, cb: 0.91 }, players: [
+    { name: "Broc Lowry", pos: "QB", pAtt: 18.7, cmp: 0.63, ypa: 6.88, pTD: 0.64, iNT: 0.21, rYd: 68.8, rTD: 1 },
+    { name: "Jalen Buckley", pos: "RB", car: 12.8, ypc: 5.6, ruTD: 0.64, tgt: 1.2, cr: 0.72, ypr: 6.3, recTD: 0.07 },
+    { name: "Lolo Mataele", pos: "RB", car: 4.1, ypc: 4.42, ruTD: 0.21, tgt: 0.5, cr: 0.72, ypr: 3, recTD: 0 },
+    { name: "Baylin Brooks", pos: "WR", tgt: 3.2, cr: 0.6, ypr: 13.8, recTD: 0, wr1: true },
+    { name: "Aveion Chenault", pos: "WR", tgt: 2.7, cr: 0.6, ypr: 12, recTD: 0.14 },
+    { name: "Nate Levicki", pos: "TE", tgt: 3.6, cr: 0.65, ypr: 14.5, recTD: 0.43 } ] },
+  WSU: { abbr: "WSU", name: "Washington St", pace: 0.98, def: { pass: 0.85, run: 0.85, cb: 0.91 }, players: [
+    { name: "Caden Pinnick", pos: "QB", pAtt: 26.5, cmp: 0.7, ypa: 9.29, pTD: 2.46, iNT: 0.77, rYd: 33.6, rTD: 0.23 },
+    { name: "Kirby Vorhees", pos: "RB", car: 10.6, ypc: 4.17, ruTD: 0.38, tgt: 2, cr: 0.72, ypr: 6.6, recTD: 0 },
+    { name: "Leo Pulalasi", pos: "RB", car: 2.9, ypc: 5.39, ruTD: 0, tgt: 1.3, cr: 0.72, ypr: 6.4, recTD: 0 },
+    { name: "Tony Freeman", pos: "WR", tgt: 6.9, cr: 0.6, ypr: 10.9, recTD: 0.23, wr1: true },
+    { name: "Jordan Dees", pos: "WR", tgt: 4.6, cr: 0.6, ypr: 14.1, recTD: 0.23 },
+    { name: "Trey Leckner", pos: "TE", tgt: 2.8, cr: 0.65, ypr: 7.8, recTD: 0.23 } ] },
+  WVU: { abbr: "WVU", name: "West Virginia", pace: 1.06, def: { pass: 1.15, run: 0.96, cb: 1.1 }, players: [
+    { name: "Scotty Fox Jr.", pos: "QB", pAtt: 14.2, cmp: 0.59, ypa: 7.51, pTD: 0.58, iNT: 0.5, rYd: 16.8, rTD: 0.25 },
+    { name: "Cam Cook", pos: "RB", car: 24.6, ypc: 5.62, ruTD: 1.33, tgt: 3.5, cr: 0.72, ypr: 9.5, recTD: 0 },
+    { name: "DJ Epps", pos: "WR", tgt: 6.5, cr: 0.6, ypr: 10.9, recTD: 0.42, wr1: true },
+    { name: "John Neider", pos: "WR", tgt: 3.8, cr: 0.6, ypr: 15.6, recTD: 0.17 },
+    { name: "Jaden Bray", pos: "WR", tgt: 1, cr: 0.6, ypr: 13.6, recTD: 0 },
+    { name: "Josh Sapp", pos: "TE", tgt: 1.4, cr: 0.65, ypr: 13.6, recTD: 0 } ] },
+  WYO: { abbr: "WYO", name: "Wyoming", pace: 0.97, def: { pass: 0.85, run: 1.12, cb: 0.9 }, players: [
+    { name: "Tyler Hughes", pos: "QB", pAtt: 25.7, cmp: 0.66, ypa: 7.56, pTD: 1.67, iNT: 0.25, rYd: 55.8, rTD: 0.92 },
+    { name: "Markell Holman", pos: "RB", car: 19.3, ypc: 4.61, ruTD: 0.58, tgt: 4.5, cr: 0.72, ypr: 8.1, recTD: 0.17 },
+    { name: "Samuel Harris", pos: "RB", car: 8.3, ypc: 5.58, ruTD: 0.08, tgt: 1.9, cr: 0.72, ypr: 11.5, recTD: 0 },
+    { name: "Deion DeBlanc", pos: "WR", tgt: 2.4, cr: 0.6, ypr: 5.3, recTD: 0, wr1: true },
+    { name: "Jackson Holman", pos: "WR", tgt: 1.8, cr: 0.6, ypr: 10.7, recTD: 0 },
+    { name: "Eric Richardson", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 11.2, recTD: 0.08 } ] },
+};
+type League = "nfl" | "cfb";
+type Game = { away: string; home: string; slot: string; awayRank?: number; homeRank?: number };
 const CURATED_GAMES: Game[] = [
   { away: "KC", home: "BUF", slot: "Sun · 4:25 PM" },
   { away: "PHI", home: "DAL", slot: "Sun · 8:20 PM" },
@@ -344,18 +1342,20 @@ async function loadLive(proxy: string): Promise<DataSet> {
    Deploying the Worker upgrades this to live season-to-date usage. */
 const ESPN_ABBR: Record<string, string> = { WSH: "WAS", JAC: "JAX", LVR: "LV", LAV: "LV", ARZ: "ARI", GBP: "GB", KAN: "KC", NWE: "NE", NOR: "NO", SFO: "SF", TAM: "TB" };
 const canon = (a?: string) => (a ? ESPN_ABBR[a] || a : "");
-async function loadESPN(T: Record<string, Team>): Promise<DataSet> {
-  const d = await fetchJSON("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
+const ESPN_PATH: Record<League, string> = { nfl: "nfl", cfb: "college-football" };
+async function loadESPN(T: Record<string, Team>, league: League): Promise<DataSet> {
+  const d = await fetchJSON(`https://site.api.espn.com/apis/site/v2/sports/football/${ESPN_PATH[league]}/scoreboard`);
   const week: number | null = d?.week?.number ?? null;
   const games: Game[] = [];
   for (const e of (d.events || [])) {
     const comp = e.competitions && e.competitions[0]; if (!comp || !Array.isArray(comp.competitors)) continue;
-    const away = canon(comp.competitors.find((x: any) => x.homeAway === "away")?.team?.abbreviation);
-    const home = canon(comp.competitors.find((x: any) => x.homeAway === "home")?.team?.abbreviation);
-    if (!T[away] || !T[home]) continue;
+    const aC = comp.competitors.find((x: any) => x.homeAway === "away"), hC = comp.competitors.find((x: any) => x.homeAway === "home");
+    const away = canon(aC?.team?.abbreviation), home = canon(hC?.team?.abbreviation);
+    if (!T[away] || !T[home]) continue;                              // a game between teams we have no usage data for can't be simulated
     const dt = new Date(e.date);
     const slot = isNaN(+dt) ? `Week ${week ?? ""}` : dt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    games.push({ away, home, slot });
+    const rk = (c: any) => { const r = Number(c?.curatedRank?.current); return r > 0 && r < 99 ? r : undefined; }; // AP rank (CFB only) — shown on the game card
+    games.push({ away, home, slot, awayRank: rk(aC), homeRank: rk(hC) });
   }
   if (!games.length) throw new Error("no ESPN games matched the dataset");
   return { T, games, source: "espn", week };
@@ -458,18 +1458,22 @@ function Index() {
   const [proxy, setProxy] = useState(readProxy);
   const [showCfg, setShowCfg] = useState(false);
   const [draft, setDraft] = useState(proxy);
+  const [league, setLeague] = useState<League>(() => { try { return (localStorage.getItem("gs_league") as League) || "nfl"; } catch { return "nfl"; } });
 
-  // resolve data: Worker (full live) → ESPN real slate + baked usage → offline demo
+  // resolve data: Worker (NFL only, full live) → ESPN real slate + baked usage → offline demo
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
-      if (proxy) { try { const d = await loadLive(proxy); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ } }
-      try { const d = await loadESPN(CURATED_T); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ }
-      if (alive) { setData(CURATED); setLoading(false); }
+      const base = league === "cfb" ? CFB_T : CURATED_T;
+      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ } }
+      try { const d = await loadESPN(base, league); if (alive) { setData(d); setSel(null); setRes(null); setLoading(false); } return; } catch { /* fall back */ }
+      if (alive) { setData(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED); setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [proxy]);
+  }, [proxy, league]);
+
+  const pickLeague = (l: League) => { if (l === league) return; try { localStorage.setItem("gs_league", l); } catch {} setSel(null); setRes(null); setLeague(l); };
 
   const TT = data.T;
   const games = data.games;
@@ -533,6 +1537,13 @@ function Index() {
             <div style={{ fontSize: 12, color: C.mut }}>Monte-Carlo NFL game simulator · {data.week ? `Week ${data.week}` : "Week slate"} · PPR scoring</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", border: `1px solid ${C.line}`, borderRadius: 20, overflow: "hidden", background: "#0e1c15" }}>
+              {(["nfl", "cfb"] as League[]).map((l) => (
+                <button key={l} onClick={() => pickLeague(l)} style={{ background: league === l ? C.field : "transparent", color: league === l ? "#04140c" : C.mut, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: "6px 12px", letterSpacing: 0.4 }}>
+                  {l === "nfl" ? "NFL" : "NCAA"}
+                </button>
+              ))}
+            </div>
             <span title={srcLabel} style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 20, border: `1px solid ${C.line}`, color: loading ? C.gold : live ? C.field : C.mut, background: "#0e1c15", whiteSpace: "nowrap" }}>
               <span style={{ marginRight: 6 }}>●</span>{loading ? "loading…" : srcLabel}
             </span>
@@ -542,7 +1553,7 @@ function Index() {
 
         {showCfg && (
           <div style={{ ...box, padding: 14, margin: "12px 0", fontSize: 12, color: C.mut }}>
-            <div style={{ marginBottom: 8 }}>Live-data proxy URL (your Cloudflare Worker). Leave blank to use the offline curated slate.</div>
+            <div style={{ marginBottom: 8 }}>Live-data proxy URL (your Cloudflare Worker) — <b>NFL only</b>. Leave blank to use the baked usage dataset. NCAA always runs on its baked 2025 dataset + the live ESPN slate.</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="https://your-worker.workers.dev" style={{ flex: 1, minWidth: 220, ...box, color: C.chalk, padding: "9px 10px", fontFamily: "ui-monospace,monospace", fontSize: 12 }} />
               <button onClick={saveProxy} style={{ background: `linear-gradient(135deg,${C.field},#1e8f52)`, color: "#04140c", border: "none", borderRadius: 8, fontWeight: 800, padding: "9px 16px", cursor: "pointer" }}>Save</button>
@@ -557,7 +1568,9 @@ function Index() {
               {games.map((g, i) => (
                 <button key={i} onClick={() => { setSel(i); setRes(null); }} style={{ ...box, cursor: "pointer", textAlign: "left", padding: "14px 16px", color: C.chalk, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: 17, fontWeight: 800 }}>{TT[g.away].abbr} <span style={{ color: C.mut, fontWeight: 400 }}>@</span> {TT[g.home].abbr}</div>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>
+                      {g.awayRank && <span style={{ color: C.gold, fontSize: 11, marginRight: 3 }}>#{g.awayRank}</span>}{TT[g.away].abbr} <span style={{ color: C.mut, fontWeight: 400 }}>@</span> {g.homeRank && <span style={{ color: C.gold, fontSize: 11, marginRight: 3 }}>#{g.homeRank}</span>}{TT[g.home].abbr}
+                    </div>
                     <div style={{ fontSize: 11, color: C.mut }}>{TT[g.away].name} at {TT[g.home].name}</div>
                   </div>
                   <div style={{ textAlign: "right", fontSize: 11, color: C.field }}>{g.slot}<div style={{ color: C.mut, marginTop: 2 }}>simulate ▸</div></div>
@@ -565,7 +1578,7 @@ function Index() {
               ))}
             </div>
             <p style={{ marginTop: 22, fontSize: 11, color: C.mut, lineHeight: 1.6 }}>
-              Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Every RUN reseeds, so results carry real sampling variation and converge as N grows — never a canned answer. {data.source === "espn" ? "This week's real slate is pulled live from ESPN; player usage is the 2025-season baseline. Add a proxy via ⚙ for live season-to-date usage." : data.source === "curated" ? "Live feeds unavailable — running the offline demo slate." : `This week's slate + live per-player usage (${srcLabel.replace("live · ", "")}).`}
+              Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Every RUN reseeds, so results carry real sampling variation and converge as N grows — never a canned answer. {data.source === "espn" ? `This week's real ${league === "cfb" ? "NCAA" : "NFL"} slate is pulled live from ESPN; player usage is the real 2025-season baseline${league === "nfl" ? ". Add a proxy via ⚙ for live season-to-date usage." : " for all FBS teams."}` : data.source === "curated" ? "Live slate unavailable — showing no games; try again shortly." : `This week's slate + live per-player usage (${srcLabel.replace("live · ", "")}).`}
             </p>
           </>
         ) : (
