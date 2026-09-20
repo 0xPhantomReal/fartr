@@ -1400,7 +1400,7 @@ function simPlayer(p: Player, d: Team["def"], hm: number, pace: number, r: () =>
 }
 
 type PRes = { name: string; pos: Pos; fp: number; sd: number; line: Line };
-type RankRow = PRes & { team: string; opp: string; home: boolean };  // a player pooled across the whole slate
+type RankRow = PRes & { team: string; opp: string; home: boolean; slot: string };  // a player pooled across the whole slate, with their game's kickoff
 type TRes = { abbr: string; name: string; pts: number; ptsSd: number; winPct: number; players: PRes[] };
 
 /* Incremental runner so a big N genuinely animates a progress bar and each RUN
@@ -1519,8 +1519,8 @@ function Index() {
         const st = simInit(TT[g.home], TT[g.away], ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0) || 1);
         simStep(st, n);
         const out = simFinish(st);
-        for (const p of out.home.players) rows.push({ ...p, team: g.home, opp: g.away, home: true });
-        for (const p of out.away.players) rows.push({ ...p, team: g.away, opp: g.home, home: false });
+        for (const p of out.home.players) rows.push({ ...p, team: g.home, opp: g.away, home: true, slot: g.slot });
+        for (const p of out.away.players) rows.push({ ...p, team: g.away, opp: g.home, home: false, slot: g.slot });
         gi++;
       }
       setRankProg(gi / games.length);
@@ -1628,7 +1628,7 @@ function Index() {
                         <span style={{ width: 26, textAlign: "right", fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.mut, fontFamily: "ui-monospace,monospace" }}>{i + 1}</span>
                         <span style={{ width: 28, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.pos}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name} <span style={{ color: C.mut, fontWeight: 400, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span></div>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name} <span style={{ color: C.mut, fontWeight: 400, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span>{p.slot ? <span style={{ color: C.field, fontWeight: 600, fontSize: 11, marginLeft: 6 }}>{p.slot}</span> : null}</div>
                           <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statLine(p)}</div>
                         </div>
                         <div style={{ textAlign: "right" }}>
