@@ -1307,7 +1307,7 @@ const TEAM_NAMES: Record<string, string> = {
 };
 
 /* ---- live data layer: proxy Worker (SportsDataIO → nflverse) with curated fallback ---- */
-type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null };
+type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number };
 const CURATED: DataSet = { T: CURATED_T, games: CURATED_GAMES, source: "curated", week: null };
 
 async function fetchJSON(url: string, ms = 7000): Promise<any> {
@@ -1343,22 +1343,26 @@ async function loadLive(proxy: string): Promise<DataSet> {
 const ESPN_ABBR: Record<string, string> = { WSH: "WAS", JAC: "JAX", LVR: "LV", LAV: "LV", ARZ: "ARI", GBP: "GB", KAN: "KC", NWE: "NE", NOR: "NO", SFO: "SF", TAM: "TB" };
 const canon = (a?: string) => (a ? ESPN_ABBR[a] || a : "");
 const ESPN_PATH: Record<League, string> = { nfl: "nfl", cfb: "college-football" };
+// CFB: the scoreboard defaults to a CURATED ~22-game subset (ranked/featured). groups=80 = all of FBS, which is the
+// real ~75-game slate. Without it most of the week is silently missing. NFL needs no filter — 16 games is the whole week.
+const ESPN_Q: Record<League, string> = { nfl: "", cfb: "?limit=300&groups=80" };
 async function loadESPN(T: Record<string, Team>, league: League): Promise<DataSet> {
-  const d = await fetchJSON(`https://site.api.espn.com/apis/site/v2/sports/football/${ESPN_PATH[league]}/scoreboard`);
+  const d = await fetchJSON(`https://site.api.espn.com/apis/site/v2/sports/football/${ESPN_PATH[league]}/scoreboard${ESPN_Q[league]}`);
   const week: number | null = d?.week?.number ?? null;
   const games: Game[] = [];
+  let skipped = 0;
   for (const e of (d.events || [])) {
     const comp = e.competitions && e.competitions[0]; if (!comp || !Array.isArray(comp.competitors)) continue;
     const aC = comp.competitors.find((x: any) => x.homeAway === "away"), hC = comp.competitors.find((x: any) => x.homeAway === "home");
     const away = canon(aC?.team?.abbreviation), home = canon(hC?.team?.abbreviation);
-    if (!T[away] || !T[home]) continue;                              // a game between teams we have no usage data for can't be simulated
+    if (!T[away] || !T[home]) { skipped++; continue; }               // a team we have no usage data for (FCS opponents in CFB) — can't be simulated, so it's surfaced rather than silently dropped
     const dt = new Date(e.date);
     const slot = isNaN(+dt) ? `Week ${week ?? ""}` : dt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const rk = (c: any) => { const r = Number(c?.curatedRank?.current); return r > 0 && r < 99 ? r : undefined; }; // AP rank (CFB only) — shown on the game card
     games.push({ away, home, slot, awayRank: rk(aC), homeRank: rk(hC) });
   }
   if (!games.length) throw new Error("no ESPN games matched the dataset");
-  return { T, games, source: "espn", week };
+  return { T, games, source: "espn", week, skipped };
 }
 
 /* ---- seeded RNG + distributions ---- */
@@ -1637,7 +1641,7 @@ function Index() {
                 </>
               )}
             </div>
-            <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>{loading ? "Loading this week's games…" : data.week ? `Week ${data.week} Games` : "This Week's Games"} — tap to simulate</div>
+            <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>{loading ? "Loading this week's games…" : data.week ? `Week ${data.week} Games (${games.length})` : "This Week's Games"} — tap to simulate{!loading && data.skipped ? <span style={{ textTransform: "none", letterSpacing: 0, color: "#7fa394" }}> · {data.skipped} hidden ({league === "cfb" ? "non-FBS opponent" : "no player data"})</span> : null}</div>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", opacity: loading ? 0.4 : 1 }}>
               {games.map((g, i) => (
                 <button key={i} onClick={() => { setSel(i); setRes(null); }} style={{ ...box, cursor: "pointer", textAlign: "left", padding: "14px 16px", color: C.chalk, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
