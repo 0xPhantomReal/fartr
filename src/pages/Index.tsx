@@ -1307,7 +1307,7 @@ const TEAM_NAMES: Record<string, string> = {
 };
 
 /* ---- live data layer: proxy Worker (SportsDataIO → nflverse) with curated fallback ---- */
-type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number; inj?: InjReport };
+type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number; inj?: InjReport; offRoster?: { team: string; name: string; pos: string }[]; teamIds?: { abbr: string; id: string }[]; staleTeams?: string[] };
 
 /* =========================================================================================
    INJURIES — ESPN publishes a league-wide report, CORS-open, no proxy or key needed.
@@ -1326,10 +1326,78 @@ const CUT_STATUS = new Set(["out", "injured reserve", "doubtful", "questionable"
 const nameKey = (n: string, pos?: string) => {
   const t = String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, " ").replace(/[^a-z. ]/g, " ").replace(/\s+/g, " ").trim();
-  const parts = (t.includes(".") ? t.split(".") : t.split(" ")).map((x) => x.trim()).filter(Boolean);
+  // Split on BOTH periods and spaces. Splitting on "." alone meant a full name with no internal
+  // period ("Marvin Harrison Jr.") became a single part, so the last-name slot got the whole name with
+  // spaces removed — "m|marvinharrison" against the roster's "m|harrison". That silently benched active
+  // WR1s, which is worse than the stale-roster bug it was meant to fix.
+  const parts = t.split(/[.\s]+/).filter(Boolean);
   if (!parts.length) return "";
-  return (parts[0][0] || "") + "|" + parts[parts.length - 1].replace(/\s/g, "") + "|" + (pos || "");
+  return (parts[0][0] || "") + "|" + parts[parts.length - 1] + "|" + (pos || "");
 };
+
+/* =========================================================================================
+   CURRENT ROSTERS — the per-player usage baked into this file was scraped once and never
+   ages out, so traded and released players keep being projected for their old team. Measured
+   against ESPN's live rosters, 85 of 242 baked NFL skill players (35%) are no longer on the
+   team they are listed under — Tyler Allgeier is on Arizona while this file still has him in
+   Atlanta.
+
+   ESPN's roster endpoint groups players as offense / defense / specialTeam /
+   injuredReserveOrOut / suspended / practiceSquad. Only the first three can take a snap, so
+   the rest are dropped along with anyone the roster no longer contains at all.
+
+   Only teams on THIS week's slate are fetched — a handful of calls rather than the whole
+   league, and it works for CFB, where team ids are not a tidy range.
+   ========================================================================================= */
+type RosterReport = { byTeam: Map<string, Set<string>>; dropped: { team: string; name: string; pos: string }[]; fetched: boolean; stale?: string[] };
+const PLAYABLE = /^(offense|defense|specialteam)$/i;
+
+async function loadRosters(league: "nfl" | "cfb", teams: { abbr: string; id: string }[]): Promise<RosterReport> {
+  const byTeam = new Map<string, Set<string>>();
+  const path = league === "cfb" ? "college-football" : "nfl";
+  let i = 0;
+  const worker = async () => {
+    while (i < teams.length) {
+      const t = teams[i++];
+      try {
+        const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/${path}/teams/${t.id}/roster`);
+        if (!r.ok) continue;
+        const d = await r.json();
+        const live = (d?.athletes || []).filter((g: any) => PLAYABLE.test(String(g?.position || "").replace(/\s/g, "")))
+          .flatMap((g: any) => g?.items || []);
+        const set = new Set<string>();
+        for (const a of live) { const pos = a?.position?.abbreviation; if (pos) set.add(nameKey(a?.displayName, pos)); }
+        if (set.size) byTeam.set(t.abbr, set);
+      } catch { /* one team failing must not blank the rest */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, teams.length) }, worker));
+  return { byTeam, dropped: [], fetched: byTeam.size > 0 };
+}
+
+// Drop anyone the current roster does not carry. A team whose roster failed to load keeps ALL
+// its players — a fetch hiccup must not silently empty a roster and skew the game.
+function applyRosters(T: Record<string, Team>, rr: RosterReport): { T: Record<string, Team>; dropped: RosterReport["dropped"]; stale: string[] } {
+  if (!rr.fetched) return { T, dropped: [], stale: [] };
+  const dropped: RosterReport["dropped"] = [];
+  const stale: string[] = [];
+  const out: Record<string, Team> = {};
+  for (const [abbr, t] of Object.entries(T)) {
+    const live = rr.byTeam.get(abbr);
+    if (!live) { out[abbr] = t; continue; }
+    const keep = t.players.filter((p) => {
+      if (live.has(nameKey(p.name, p.pos))) return true;
+      dropped.push({ team: abbr, name: p.name, pos: p.pos });
+      return false;
+    });
+    // Fewer than three survivors means the match failed, not that the team is empty — a two-man
+    // roster cannot be simulated. Keep the baked players, but record the team: it is showing stale
+    // data and saying so is better than quietly projecting players who left.
+    if (keep.length >= 3) { out[abbr] = { ...t, players: keep }; }
+    else { out[abbr] = t; stale.push(abbr); for (const d of dropped.filter((x) => x.team === abbr)) dropped.splice(dropped.indexOf(d), 1); }
+  }
+  return { T: out, dropped, stale };
+}
 
 async function loadInjuries(league: "nfl" | "cfb"): Promise<InjReport> {
   const empty: InjReport = { byName: new Map(), cut: [], total: 0, fetched: false };
@@ -1411,6 +1479,7 @@ async function loadESPN(T: Record<string, Team>, league: League): Promise<DataSe
   const d = await fetchJSON(`https://site.api.espn.com/apis/site/v2/sports/football/${ESPN_PATH[league]}/scoreboard${ESPN_Q[league]}`);
   const week: number | null = d?.week?.number ?? null;
   const games: Game[] = [];
+  const ids = new Map<string, string>();      // slate teams only — a roster call each, not the whole league
   let skipped = 0;
   for (const e of (d.events || [])) {
     const comp = e.competitions && e.competitions[0]; if (!comp || !Array.isArray(comp.competitors)) continue;
@@ -1421,9 +1490,10 @@ async function loadESPN(T: Record<string, Team>, league: League): Promise<DataSe
     const slot = isNaN(+dt) ? `Week ${week ?? ""}` : dt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const rk = (c: any) => { const r = Number(c?.curatedRank?.current); return r > 0 && r < 99 ? r : undefined; }; // AP rank (CFB only) — shown on the game card
     games.push({ away, home, slot, awayRank: rk(aC), homeRank: rk(hC) });
+    for (const [ab, c] of [[away, aC], [home, hC]] as const) { const id = c?.team?.id; if (id && !ids.has(ab)) ids.set(ab, String(id)); }
   }
   if (!games.length) throw new Error("no ESPN games matched the dataset");
-  return { T, games, source: "espn", week, skipped };
+  return { T, games, source: "espn", week, skipped, teamIds: [...ids].map(([abbr, id]) => ({ abbr, id })) };
 }
 
 /* ---- seeded RNG + distributions ---- */
@@ -1570,13 +1640,16 @@ function Index() {
       // Fetched once per league change and applied to whichever dataset wins below, so the cut
       // happens in exactly one place rather than being repeated down each fallback path.
       const inj = await loadInjuries(league);
-      const withInj = (d: DataSet): DataSet => {
-        const { T, removed } = applyInjuries(d.T, inj);
-        return { ...d, T, inj: { ...inj, cut: removed } };
+      const withInj = async (d: DataSet): Promise<DataSet> => {
+        // roster first: someone traded away should not also be reported as an injury cut
+        const rr = d.teamIds?.length ? await loadRosters(league, d.teamIds) : { byTeam: new Map<string, Set<string>>(), dropped: [], fetched: false };
+        const afterRoster = applyRosters(d.T, rr);
+        const { T, removed } = applyInjuries(afterRoster.T, inj);
+        return { ...d, T, inj: { ...inj, cut: removed }, offRoster: afterRoster.dropped, staleTeams: afterRoster.stale };
       };
-      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
-      try { const d = await loadESPN(base, league); if (alive) { setData(withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
-      if (alive) { setData(withInj(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED)); setLoading(false); }
+      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(await withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
+      try { const d = await loadESPN(base, league); if (alive) { setData(await withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
+      if (alive) { setData(await withInj(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED)); setLoading(false); }
     })();
     return () => { alive = false; };
   }, [proxy, league]);
@@ -1754,24 +1827,45 @@ function Index() {
                 </button>
               ))}
             </div>
-            {/* The cut changes every projection on the page, so it is shown rather than applied silently. */}
-            {data.inj?.fetched && (
+            {/* Both cuts change every projection on the page, so they are shown rather than applied silently. */}
+            {(data.inj?.fetched || (data.offRoster?.length ?? 0) > 0) && (
               <div style={{ marginTop: 18, ...box, padding: "12px 14px" }}>
-                <div style={{ fontSize: 12, color: C.chalk, fontWeight: 700, marginBottom: 6 }}>
-                  injury cut · {data.inj.cut.length} player{data.inj.cut.length === 1 ? "" : "s"} removed
-                  <span style={{ color: C.mut, fontWeight: 400 }}> — Out / IR / Doubtful / Questionable are not simulated</span>
-                </div>
-                {data.inj.cut.length === 0
-                  ? <div style={{ fontSize: 11, color: C.mut }}>nobody on this slate is ruled out.</div>
-                  : <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
-                      {data.inj.cut.slice(0, 40).map((i, k) => (
-                        <span key={k}>
-                          <span style={{ color: C.red }}>{i.status.toLowerCase() === "questionable" ? "Q" : i.status.toLowerCase() === "doubtful" ? "D" : "O"}</span>
-                          {" "}<span style={{ color: C.chalk }}>{i.name}</span> {i.pos}{i.detail ? " (" + i.detail + ")" : ""}
-                        </span>
+                {(data.offRoster?.length ?? 0) > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: C.chalk, fontWeight: 700, marginBottom: 6 }}>
+                      no longer on the roster · {data.offRoster!.length} dropped
+                      <span style={{ color: C.mut, fontWeight: 400 }}> — traded, released, on IR or practice squad per ESPN's live roster</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
+                      {data.offRoster!.slice(0, 40).map((p, k) => (
+                        <span key={k}><span style={{ color: C.mut }}>{p.team}</span> <span style={{ color: C.chalk }}>{p.name}</span> {p.pos}</span>
                       ))}
-                      {data.inj.cut.length > 40 && <span>+{data.inj.cut.length - 40} more</span>}
-                    </div>}
+                      {data.offRoster!.length > 40 && <span>+{data.offRoster!.length - 40} more</span>}
+                    </div>
+                  </div>
+                )}
+                {(data.staleTeams?.length ?? 0) > 0 && (
+                  <div style={{ marginBottom: 10, fontSize: 11, color: C.gold }}>
+                    ⚠ {data.staleTeams!.join(", ")} — roster match failed, these teams are still showing stale players.
+                  </div>
+                )}
+                {data.inj?.fetched && (<>
+                  <div style={{ fontSize: 12, color: C.chalk, fontWeight: 700, marginBottom: 6 }}>
+                    injury cut · {data.inj.cut.length} player{data.inj.cut.length === 1 ? "" : "s"} removed
+                    <span style={{ color: C.mut, fontWeight: 400 }}> — Out / IR / Doubtful / Questionable are not simulated</span>
+                  </div>
+                  {data.inj.cut.length === 0
+                    ? <div style={{ fontSize: 11, color: C.mut }}>nobody left on this slate is ruled out.</div>
+                    : <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
+                        {data.inj.cut.slice(0, 40).map((i, k) => (
+                          <span key={k}>
+                            <span style={{ color: C.red }}>{i.status.toLowerCase() === "questionable" ? "Q" : i.status.toLowerCase() === "doubtful" ? "D" : "O"}</span>
+                            {" "}<span style={{ color: C.chalk }}>{i.name}</span> {i.pos}{i.detail ? " (" + i.detail + ")" : ""}
+                          </span>
+                        ))}
+                        {data.inj.cut.length > 40 && <span>+{data.inj.cut.length - 40} more</span>}
+                      </div>}
+                </>)}
               </div>
             )}
             <p style={{ marginTop: 22, fontSize: 11, color: C.mut, lineHeight: 1.6 }}>
