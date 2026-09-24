@@ -1,6 +1,6 @@
 import { it } from "vitest";
 import { simInit, simStep, simFinish, regressToPrior, type Team, type Player, type Capture, type Pos } from "../lib/sim";
-import { optimize, suggestTarget, type SlatePlayer, type Joint } from "../lib/dfs";
+import { optimize, suggestTarget, evaluate, naiveBounds, type SlatePlayer, type Joint } from "../lib/dfs";
 
 const SORTS = ["receiving.receptions","receiving.receivingTargets","rushing.rushingAttempts","rushing.rushingYards","passing.passingAttempts","scoring.totalTouchdowns","general.gamesPlayed"];
 const SKILL = new Set(["QB","RB","WR","TE"]);
@@ -95,6 +95,18 @@ it.skipIf(!process.env.LIVE)("end to end on live ESPN data", { timeout: 180000 }
   console.log("    " + "PLAYER".padEnd(26) + "TM  OPP   IMP  FLOOR  PROJ   CEIL   TD%  BOOM");
   for (const p of pool.slice().sort((a,b)=>b.p90-a.p90).slice(0,12))
     console.log("    " + `${p.depth} ${p.name}`.padEnd(26) + `${p.team.padEnd(3)} ${p.opp.padEnd(4)} ${String((p as any).implied ?? "-").padStart(4)} ${p.p10.toFixed(1).padStart(6)} ${p.fp.toFixed(1).padStart(5)} ${p.p90.toFixed(1).padStart(6)} ${(p.tdPct*100).toFixed(0).padStart(4)}% ${(p.boomPct*100).toFixed(0).padStart(4)}%`);
+
+  /* ---- what the hand builder shows for a lineup you pick yourself ---- */
+  {
+    const take = (pos: string, n: number) => pool.filter(p => p.pos === pos).sort((a,b)=>b.fp-a.fp).slice(0, n);
+    const mine = [...take("QB",1), ...take("RB",2), ...take("WR",3), ...take("TE",1), ...take("WR",4)[3] ? [take("WR",4)[3]] : []];
+    const st = evaluate(mine, J, 0), nv = naiveBounds(mine);
+    console.log(`\n  HAND-BUILT (top projection at each slot)`);
+    console.log(`    ${mine.map(p=>p.name.split(" ").slice(-1)[0]).join(" ")}`);
+    console.log(`    projected ${st.mean.toFixed(1)}  floor ${st.p10.toFixed(1)}  ceiling ${st.p90.toFixed(1)}`);
+    console.log(`    adding the players' OWN floors gives ${nv.p10.toFixed(1)} and their own ceilings ${nv.p90.toFixed(1)}`);
+    console.log(`    -> floor understated by ${(st.p10-nv.p10).toFixed(1)}, ceiling overstated by ${(nv.p90-st.p90).toFixed(1)}`);
+  }
 
   const tgt = suggestTarget(pool, J);
   console.log(`\n  suggested target: ${tgt}`);

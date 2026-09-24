@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { simInit, simStep, simFinish, type Team, type Capture } from "../lib/sim";
-import { optimize, suggestTarget, describeStack, type SlatePlayer, type Joint } from "../lib/dfs";
+import { optimize, suggestTarget, describeStack, evaluate, naiveBounds, lineupIssues, fits, SLOTS, type SlatePlayer, type Joint } from "../lib/dfs";
 
 const team = (abbr: string, mult = 1): Team => ({
   abbr, name: abbr, pace: 1, def: { pass: 1, run: 1, cb: 1 },
@@ -133,5 +133,49 @@ describe("target suggestion", () => {
     expect(Ls[0].stats.hit).toBe(0);
     const best = optimize(pool, J, { target: suggestTarget(pool, J), count: 1, seed: 21, restarts: 40 })[0];
     expect(Ls[0].stats.mean).toBeGreaterThan(best.stats.mean * 0.85);   // not garbage — still a strong lineup
+  });
+});
+
+describe("hand-built lineups", () => {
+  const { pool, J } = slate(6000);
+  const pick = (...keys: string[]) => keys.map((k) => pool.find((p) => p.key === k)!);
+
+  it("scores a hand-built lineup exactly as the search scores its own", () => {
+    const [L] = optimize(pool, J, { target: suggestTarget(pool, J), count: 1, seed: 17, restarts: 50 });
+    const same = evaluate(L.players, J, suggestTarget(pool, J));
+    // Same players, same samples — the builder must not produce a second opinion.
+    expect(same.mean).toBeCloseTo(L.stats.mean, 4);
+    expect(same.p10).toBeCloseTo(L.stats.p10, 4);
+    expect(same.hit).toBeCloseTo(L.stats.hit, 6);
+  });
+
+  it("adds means exactly, because means DO add", () => {
+    const ps = pick("AAA:AAA QB", "AAA:AAA WR1", "CCC:CCC RB1");
+    expect(evaluate(ps, J, 0).mean).toBeCloseTo(ps.reduce((s, p) => s + p.fp, 0), 1);
+  });
+
+  it("puts the real floor ABOVE the sum of the floors, and the ceiling below", () => {
+    /* The whole reason a lineup is scored on joint samples instead of on the board's columns:
+       eight players do not all have their worst game at once, and rarely all boom at once. */
+    const [L] = optimize(pool, J, { target: suggestTarget(pool, J), count: 1, seed: 4, restarts: 50 });
+    const st = evaluate(L.players, J, 0), nv = naiveBounds(L.players);
+    expect(st.p10).toBeGreaterThan(nv.p10);
+    expect(st.p90).toBeLessThan(nv.p90);
+  });
+
+  it("scores a part-built lineup rather than refusing", () => {
+    const st = evaluate(pick("AAA:AAA QB", "AAA:AAA WR1"), J, 40);
+    expect(st.mean).toBeGreaterThan(0);
+    expect(st.hit).toBeGreaterThan(0);
+    expect(evaluate([], J, 40).mean).toBe(0);
+  });
+
+  it("names what is stopping a lineup being legal", () => {
+    const seat = SLOTS.map(() => null) as (SlatePlayer | null)[];
+    expect(lineupIssues(seat)[0]).toContain("8 slots");
+    const oneGame = pool.filter((p) => p.game === "G0");
+    const full = SLOTS.map((sl) => oneGame.find((p) => fits(p.pos, sl) && true)!);
+    // Eight players all from a single game is a legal-looking roster that DraftKings rejects.
+    expect(lineupIssues(full).join(" ")).toContain("games");
   });
 });

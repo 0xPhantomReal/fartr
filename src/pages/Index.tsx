@@ -3,7 +3,7 @@ import {
   type Pos, type Player, type Team, type Line, type PRes, type TRes, type Capture,
   simInit, simStep, simFinish, zero, fpOf, clamp, regressToPrior, HB, HW,
 } from "../lib/sim";
-import { optimize, suggestTarget, SLOTS, type SlatePlayer, type Joint, type Lineup } from "../lib/dfs";
+import { optimize, suggestTarget, evaluate, naiveBounds, lineupIssues, describeStack, fits, SLOTS, type SlatePlayer, type Joint, type Lineup } from "../lib/dfs";
 
 /* =========================================================================================
    GRIDIRON SIM — a real Monte-Carlo NFL game simulator.
@@ -1716,6 +1716,9 @@ function Index() {
   const [lineups, setLineups] = useState<Lineup[] | null>(null);
   const [lineupBusy, setLineupBusy] = useState(false);
   const [target, setTarget] = useState(0);
+  // The hand-built lineup, one entry per roster slot so a player's seat is explicit rather than
+  // inferred from their position — a running back in the FLEX has to stay in the FLEX.
+  const [build, setBuild] = useState<(RankRow | null)[]>(() => SLOTS.map(() => null));
   const [rankBusy, setRankBusy] = useState(false);
   const [rankProg, setRankProg] = useState(0);
   const [posFilter, setPosFilter] = useState<"ALL" | Pos>("ALL");
@@ -1822,6 +1825,33 @@ function Index() {
     requestAnimationFrame(step);
   };
 
+  // Reading a percentile off the joint buffer means sorting thousands of floats, so it is computed
+  // when the simulation changes rather than on every keystroke and re-render.
+  const defaultTarget = useMemo(() => (ranks && joint ? suggestTarget(ranks, joint) : 0), [ranks, joint]);
+
+  /* Seat a player, or lift them back out if they are already in. A click lands them in the first
+     slot they are eligible for, which puts a third receiver in the FLEX without being asked. */
+  const toggleBuild = (p: RankRow) => setBuild((b) => {
+    if (b.some((x) => x?.key === p.key)) return b.map((x) => (x?.key === p.key ? null : x));
+    const i = b.findIndex((x, k) => !x && fits(p.pos, SLOTS[k]));
+    if (i < 0) return b;                                   // no seat free for that position
+    const n = b.slice(); n[i] = p; return n;
+  });
+  const seatFor = (p: RankRow) => build.findIndex((x, k) => !x && fits(p.pos, SLOTS[k]));
+  const inBuild = (p: RankRow) => build.some((x) => x?.key === p.key);
+
+  const picked = build.filter(Boolean) as RankRow[];
+  const buildTarget = target || defaultTarget;
+  /* Recomputed only when the roster or the target moves — each call sums and sorts thousands of
+     floats, which is cheap once and wasteful on every render. */
+  const buildStats = useMemo(() => (joint && picked.length ? evaluate(picked, joint, buildTarget) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [joint, buildTarget, picked.map((p) => p.key).join("|")]);
+  const buildNaive = useMemo(() => naiveBounds(picked),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [picked.map((p) => p.key).join("|")]);
+  const buildIssues = lineupIssues(build);
+
   /* Build lineups out of the joint samples. Nothing here mentions stacking — the search finds it,
      or does not, depending purely on how often those players reached the target together. */
   const buildLineups = () => {
@@ -1834,10 +1864,6 @@ function Index() {
       setLineups(out); setTarget(t); setLineupBusy(false);
     });
   };
-  // Reading a percentile off the joint buffer means sorting thousands of floats, so it is computed
-  // when the simulation changes rather than on every keystroke and re-render.
-  const defaultTarget = useMemo(() => (ranks && joint ? suggestTarget(ranks, joint) : 0), [ranks, joint]);
-
   const shownRanks = useMemo(() => {
     if (!ranks) return [] as RankRow[];
     const rows = posFilter === "ALL" ? ranks.slice() : ranks.filter((r) => r.pos === posFilter);
@@ -1961,6 +1987,13 @@ function Index() {
                             <td style={{ ...tdCell, color: C.mut }}>{i + 1}</td>
                             <td style={{ padding: "7px 6px", textAlign: "left" }}>
                               <div style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
+                                {/* Seated, seatable, or no slot left for that position — all three read differently. */}
+                                <button onClick={() => toggleBuild(p)} disabled={!inBuild(p) && seatFor(p) < 0}
+                                  title={inBuild(p) ? "remove from your lineup" : seatFor(p) < 0 ? `no ${p.pos} slot left` : "add to your lineup"}
+                                  style={{ width: 18, flexShrink: 0, background: "none", border: "none", padding: 0, cursor: !inBuild(p) && seatFor(p) < 0 ? "default" : "pointer",
+                                    fontSize: 13, fontWeight: 800, lineHeight: 1, color: inBuild(p) ? C.field : seatFor(p) < 0 ? "#2a4034" : C.mut }}>
+                                  {inBuild(p) ? "\u2713" : "+"}
+                                </button>
                                 <span style={{ fontSize: 10, fontWeight: 800, color: posColor(p.pos), width: 28, flexShrink: 0 }}>{p.depth || p.pos}</span>
                                 <span style={{ fontWeight: 700, color: C.chalk }}>{p.name}</span>
                                 <span style={{ color: C.mut, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span>
@@ -1978,6 +2011,72 @@ function Index() {
                 </>
               )}
             </div>
+            {/* ---- LINEUP BUILDER: pick your own eight, scored on the same joint samples ---- */}
+            {ranks && joint && !rankBusy && (
+              <div style={{ ...box, padding: 14, margin: "14px 0 4px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 10, justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>Your lineup</div>
+                    <div style={{ fontSize: 11, color: C.mut, marginTop: 2, maxWidth: 560 }}>
+                      Tap <b style={{ color: C.field }}>+</b> on any player in the board below to seat them. Scored on the joint simulation, exactly as the search scores its own.
+                    </div>
+                  </div>
+                  {picked.length > 0 && (
+                    <button onClick={() => setBuild(SLOTS.map(() => null))}
+                      style={{ ...box, cursor: "pointer", padding: "6px 12px", fontSize: 11, fontWeight: 800, color: C.mut, background: "#0e1c15" }}>CLEAR</button>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 10, display: "grid", gap: 4, gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))" }}>
+                  {SLOTS.map((slot, k) => {
+                    const p = build[k];
+                    return (
+                      <div key={k} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11, padding: "6px 8px", borderRadius: 8,
+                        background: p ? "#0e1c15" : "transparent", border: "1px solid " + (p ? C.line : "#14261f"), whiteSpace: "nowrap", overflow: "hidden" }}>
+                        <span style={{ color: C.mut, width: 32, flexShrink: 0, fontFamily: "ui-monospace,monospace", fontWeight: 800 }}>{slot}</span>
+                        {p ? (
+                          <>
+                            <span style={{ color: posColor(p.pos), fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                            <span style={{ color: C.mut, fontFamily: "ui-monospace,monospace" }}>{p.team}</span>
+                            <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "baseline" }}>
+                              <span style={{ color: C.chalk, fontFamily: "ui-monospace,monospace" }}>{p.fp.toFixed(1)}</span>
+                              <button onClick={() => toggleBuild(p)} title="remove"
+                                style={{ background: "none", border: "none", color: C.mut, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>&times;</button>
+                            </span>
+                          </>
+                        ) : <span style={{ color: "#3c5a4c" }}>empty</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {buildStats && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid " + C.line }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 18, alignItems: "baseline" }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.mut, fontWeight: 800, letterSpacing: 0.5 }}>PROJECTED</div>
+                        <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 26, fontWeight: 800, color: C.field }}>{buildStats.mean.toFixed(1)}</div>
+                      </div>
+                      <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 12, color: C.mut, lineHeight: 1.7 }}>
+                        <div>floor <span style={{ color: C.chalk }}>{buildStats.p10.toFixed(1)}</span> &middot; median <span style={{ color: C.chalk }}>{buildStats.p50.toFixed(1)}</span> &middot; ceiling <span style={{ color: C.chalk }}>{buildStats.p90.toFixed(1)}</span></div>
+                        <div>beats {buildTarget} in <span style={{ color: C.gold }}>{(buildStats.hit * 100).toFixed(1)}%</span> of sims &middot; <span style={{ color: C.chalk }}>{describeStack(picked)}</span></div>
+                      </div>
+                    </div>
+
+                    {/* The point of doing this on joint samples rather than on the board's columns. */}
+                    {picked.length > 1 && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: C.mut, lineHeight: 1.6, maxWidth: 640 }}>
+                        Adding up these players&rsquo; own floors gives <span style={{ fontFamily: "ui-monospace,monospace", color: "#7fa394" }}>{buildNaive.p10.toFixed(1)}</span> and their own ceilings <span style={{ fontFamily: "ui-monospace,monospace", color: "#7fa394" }}>{buildNaive.p90.toFixed(1)}</span> — but percentiles don&rsquo;t add. They don&rsquo;t all have a bad day at once, so the real floor is <span style={{ fontFamily: "ui-monospace,monospace", color: C.chalk }}>{buildStats.p10.toFixed(1)}</span>, and they rarely all boom at once either, so the real ceiling is <span style={{ fontFamily: "ui-monospace,monospace", color: C.chalk }}>{buildStats.p90.toFixed(1)}</span>. How far apart those sit is exactly what correlation buys you.
+                      </div>
+                    )}
+
+                    {buildIssues.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: C.gold }}>{buildIssues.join(" · ")}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {/* ---- LINEUPS: the joint view of the very same simulation the board above summarises ---- */}
             {ranks && joint && !rankBusy && (
               <div style={{ ...box, padding: 14, margin: "14px 0 4px" }}>
@@ -2004,9 +2103,13 @@ function Index() {
                     {lineups.map((L, i) => (
                       <div key={i} style={{ border: "1px solid " + C.line, borderRadius: 10, padding: "10px 12px", background: "#0e1c15" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "baseline", justifyContent: "space-between" }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.chalk }}>
-                            #{i + 1} <span style={{ color: C.field }}>{(L.stats.hit * 100).toFixed(1)}%</span>{" "}
-                            <span style={{ color: C.mut, fontWeight: 400 }}>of sims beat {target}</span>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.chalk, display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span>#{i + 1} <span style={{ color: C.field }}>{(L.stats.hit * 100).toFixed(1)}%</span>{" "}
+                            <span style={{ color: C.mut, fontWeight: 400 }}>of sims beat {buildTarget}</span></span>
+                            {/* The search returns a starting point, not a verdict — take it and edit it. */}
+                            <button onClick={() => setBuild(SLOTS.map((sl, k) => (L.players[k] as RankRow) ?? null))}
+                              title="load into your lineup"
+                              style={{ background: "none", border: "1px solid " + C.line, borderRadius: 6, color: C.mut, cursor: "pointer", fontSize: 10, fontWeight: 800, padding: "2px 7px" }}>EDIT</button>
                           </div>
                           <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
                             proj {L.stats.mean.toFixed(1)} · floor {L.stats.p10.toFixed(1)} · ceil {L.stats.p90.toFixed(1)} · <span style={{ color: C.chalk }}>{L.stack}</span>

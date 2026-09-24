@@ -188,3 +188,42 @@ export function suggestTarget(pool: SlatePlayer[], J: Joint): number {
   const sorted = Float32Array.prototype.slice.call(tot, 0, J.sims).sort();
   return Math.round(sorted[Math.floor(0.90 * J.sims)]);
 }
+
+/* =========================================================================================
+   HAND-BUILT LINEUPS
+
+   Scored exactly the way the optimizer scores its own candidates — the eight columns summed
+   simulation by simulation — so a lineup you build by hand and a lineup the search returns are
+   directly comparable, and neither can flatter itself with different arithmetic.
+
+   Worth being precise about what changes and what does not. A lineup's PROJECTION really is the
+   sum of its players' projections; means add, and correlation cannot alter that. Its floor and
+   ceiling are another matter entirely: eight players do not all have their bad day at once, so the
+   lineup's 10th percentile sits well ABOVE the sum of the individual 10th percentiles, and its
+   ceiling well below the sum of the ceilings. Correlation is what decides how far. That gap is the
+   whole reason this is computed from the joint samples instead of from the board's columns.
+   ========================================================================================= */
+
+/** Score any set of players — a partial lineup included — on the joint samples. */
+export function evaluate(ps: SlatePlayer[], J: Joint, target: number): LineupStats {
+  if (!ps.length) return { mean: 0, sd: 0, p10: 0, p50: 0, p90: 0, hit: 0 };
+  const tot = new Float32Array(J.sims);
+  sumInto(tot, J, ps.map((p) => p.col));
+  return statsOf(tot, J.sims, target);
+}
+
+/** What the floor and ceiling would read if you (wrongly) added the players' own percentiles. */
+export function naiveBounds(ps: SlatePlayer[]) {
+  return { p10: ps.reduce((s, p) => s + p.p10, 0), p90: ps.reduce((s, p) => s + p.p90, 0) };
+}
+
+/** Everything standing between a part-built lineup and a legal one, in plain words. */
+export function lineupIssues(seat: (SlatePlayer | null)[]): string[] {
+  const out: string[] = [];
+  const empty = seat.filter((p) => !p).length;
+  if (empty) out.push(`${empty} slot${empty > 1 ? "s" : ""} still empty`);
+  const filled = seat.filter(Boolean) as SlatePlayer[];
+  if (new Set(filled.map((p) => p.key)).size !== filled.length) out.push("a player is in twice");
+  if (!empty && new Set(filled.map((p) => p.game)).size < MIN_GAMES) out.push(`needs players from ${MIN_GAMES}+ games`);
+  return out;
+}
