@@ -26,6 +26,9 @@ type Player = {
   car?: number; ypc?: number; ruTD?: number;
   // pass-catchers (RB/WR/TE)
   tgt?: number; cr?: number; ypr?: number; recTD?: number; wr1?: boolean;
+  // Depth-chart label (WR1/RB2/TE1…). DERIVED, never baked: it is stamped after injuries and
+  // roster cuts land, so benching a team's WR1 promotes WR2 into the slot instead of leaving a hole.
+  depth?: string;
 };
 type Team = { abbr: string; name: string; pace: number; def: { pass: number; run: number; cb: number }; players: Player[] };
 
@@ -1307,7 +1310,7 @@ const TEAM_NAMES: Record<string, string> = {
 };
 
 /* ---- live data layer: proxy Worker (SportsDataIO → nflverse) with curated fallback ---- */
-type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number; inj?: InjReport; offRoster?: { team: string; name: string; pos: string }[]; teamIds?: { abbr: string; id: string }[]; staleTeams?: string[] };
+type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number; inj?: InjReport; offRoster?: { team: string; name: string; pos: string }[]; teamIds?: { abbr: string; id: string }[]; staleTeams?: string[]; liveTeams?: string[] };
 
 /* =========================================================================================
    INJURIES — ESPN publishes a league-wide report, CORS-open, no proxy or key needed.
@@ -1334,6 +1337,123 @@ const nameKey = (n: string, pos?: string) => {
   if (!parts.length) return "";
   return (parts[0][0] || "") + "|" + parts[parts.length - 1] + "|" + (pos || "");
 };
+
+/* =========================================================================================
+   LIVE PLAYER USAGE — the real fix for both stale rosters and thin depth.
+
+   Rosters were baked into this file: about seven players per team, scraped once, never aged
+   out. That gave two problems at once — only a handful of players per team, and 35% of them no
+   longer on the team they were listed under.
+
+   ESPN's byathlete endpoint returns real season usage keyed to each player's CURRENT team, so
+   sourcing from it fixes the staleness at the root instead of filtering stale data afterwards.
+   One sort only returns that category's leaders, so several sorts are merged and de-duplicated
+   by athlete id: that lifts coverage from 154 players to 333 skill players, about 10.4 per team
+   — enough for WR1-4, RB1-3, TE1-2 rather than one of each.
+   ========================================================================================= */
+const USAGE_SORTS = [
+  "receiving.receptions", "receiving.receivingTargets",
+  "rushing.rushingAttempts", "rushing.rushingYards",
+  "passing.passingAttempts", "scoring.totalTouchdowns", "general.gamesPlayed",
+];
+const SKILL = new Set(["QB", "RB", "WR", "TE"]);
+
+async function loadUsage(league: "nfl" | "cfb"): Promise<Record<string, Player[]> | null> {
+  const path = league === "cfb" ? "college-football" : "nfl";
+  const seen = new Map<string, any>();
+  let labels: Record<string, string[]> = {};
+  for (const sort of USAGE_SORTS) {
+    try {
+      const r = await fetch(`https://site.api.espn.com/apis/common/v3/sports/football/${path}/statistics/byathlete?limit=1000&sort=${sort}`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      // The stat NAMES live in the top-level glossary, not on each athlete — the per-athlete
+      // objects carry bare value arrays that are meaningless without this.
+      if (!Object.keys(labels).length) for (const c of (d?.categories || [])) labels[c.name] = c.names || [];
+      for (const at of (d?.athletes || [])) { const id = at?.athlete?.id; if (id && !seen.has(id)) seen.set(id, at); }
+    } catch { /* one sort failing just narrows coverage */ }
+  }
+  if (!seen.size || !Object.keys(labels).length) return null;
+
+  const val = (at: any, cat: string, name: string): number => {
+    const c = (at.categories || []).find((x: any) => x.name === cat);
+    const i = (labels[cat] || []).indexOf(name);
+    const v = i >= 0 && c?.values ? c.values[i] : null;
+    return typeof v === "number" && isFinite(v) ? v : 0;
+  };
+
+  const byTeam: Record<string, Player[]> = {};
+  for (const at of seen.values()) {
+    const pos = at?.athlete?.position?.abbreviation;
+    const team = canon(at?.athlete?.teamShortName || at?.athlete?.team?.abbreviation);
+    if (!SKILL.has(pos) || !team) continue;
+    const gp = Math.max(1, val(at, "general", "gamesPlayed"));
+    const per = (c: string, n: string) => val(at, c, n) / gp;                 // season totals → per game
+    const tgt = per("receiving", "receivingTargets");
+    const recs = val(at, "receiving", "receptions");
+    const tgts = val(at, "receiving", "receivingTargets");
+    const p: Player = { name: at.athlete.displayName, pos } as Player;
+    if (pos === "QB") {
+      p.pAtt = per("passing", "passingAttempts");
+      p.cmp = (val(at, "passing", "completionPct") || 62) / 100;
+      p.ypa = val(at, "passing", "yardsPerPassAttempt") || 6.8;
+      p.pTD = per("passing", "passingTouchdowns");
+      p.iNT = per("passing", "interceptions");
+      p.rYd = val(at, "rushing", "rushingYardsPerGame");
+      p.rTD = per("rushing", "rushingTouchdowns");
+      if (!(p.pAtt > 2)) continue;                                            // a third-stringer with two throws is noise
+    } else if (pos === "RB") {
+      p.car = per("rushing", "rushingAttempts");
+      p.ypc = val(at, "rushing", "yardsPerRushAttempt") || 4.2;
+      p.ruTD = per("rushing", "rushingTouchdowns");
+      p.tgt = tgt; p.cr = tgts > 0 ? recs / tgts : 0.72;
+      p.ypr = val(at, "receiving", "yardsPerReception") || 7;
+      p.recTD = per("receiving", "receivingTouchdowns");
+      if (!(p.car >= 0.5 || tgt >= 0.5)) continue;
+    } else {
+      p.tgt = tgt; p.cr = tgts > 0 ? recs / tgts : 0.62;
+      p.ypr = val(at, "receiving", "yardsPerReception") || 11;
+      p.recTD = per("receiving", "receivingTouchdowns");
+      if (!(tgt >= 0.5)) continue;
+    }
+    (byTeam[team] ??= []).push(p);
+  }
+  return byTeam;
+}
+
+/* Depth chart. Runs LAST — after usage, roster and injury cuts — so the labels describe who is
+   actually available, and a WR1 ruled out promotes WR2 rather than leaving the slot empty.
+   Caps are what a game realistically gives meaningful snaps to; beyond them the tail is special
+   teams and emergency bodies, and listing them only dilutes the sim. */
+const DEPTH_CAP: Record<Pos, number> = { QB: 2, RB: 3, WR: 5, TE: 3 };
+const usageOf = (p: Player) => (p.pAtt ?? 0) + (p.car ?? 0) + (p.tgt ?? 0);
+function reslot(T: Record<string, Team>): Record<string, Team> {
+  const out: Record<string, Team> = {};
+  for (const [abbr, t] of Object.entries(T)) {
+    const kept: Player[] = [];
+    for (const pos of ["QB", "RB", "WR", "TE"] as Pos[]) {
+      const grp = t.players.filter((p) => p.pos === pos).sort((x, y) => usageOf(y) - usageOf(x));
+      grp.slice(0, DEPTH_CAP[pos]).forEach((p, i) => kept.push({ ...p, depth: pos + (i + 1), wr1: pos === "WR" && i === 0 }));
+    }
+    // Keep the card ordered by who actually touches the ball, not by position block.
+    out[abbr] = { ...t, players: kept.sort((x, y) => usageOf(y) - usageOf(x)) };
+  }
+  return out;
+}
+
+// Swap in live usage where we have enough of a team to simulate; keep the baked roster otherwise.
+function applyUsage(T: Record<string, Team>, usage: Record<string, Player[]> | null): { T: Record<string, Team>; live: string[] } {
+  if (!usage) return { T, live: [] };
+  const out: Record<string, Team> = {}; const live: string[] = [];
+  for (const [abbr, t] of Object.entries(T)) {
+    const ps = usage[abbr];
+    // Needs a passer and some skill around him; below that the merge under-covered this team and
+    // the baked roster, stale as it is, simulates better than four players would.
+    if (ps && ps.length >= 5 && ps.some((p) => p.pos === "QB")) { out[abbr] = { ...t, players: ps }; live.push(abbr); }
+    else out[abbr] = t;
+  }
+  return { T: out, live };
+}
 
 /* =========================================================================================
    CURRENT ROSTERS — the per-player usage baked into this file was scraped once and never
@@ -1530,7 +1650,7 @@ function simPlayer(p: Player, d: Team["def"], hm: number, pace: number, r: () =>
   return { line: l, teamTD };
 }
 
-type PRes = { name: string; pos: Pos; fp: number; sd: number; line: Line; p10: number; p50: number; p90: number; boomPct: number; bustPct: number };
+type PRes = { name: string; pos: Pos; depth?: string; fp: number; sd: number; line: Line; p10: number; p50: number; p90: number; boomPct: number; bustPct: number };
 type RankRow = PRes & { team: string; opp: string; home: boolean; slot: string };  // a player pooled across the whole slate, with their game's kickoff
 type TRes = { abbr: string; name: string; pts: number; ptsSd: number; winPct: number; players: PRes[] };
 
@@ -1575,7 +1695,7 @@ function simFinish(st: SimState): { home: TRes; away: TRes } {
     const mp = pts / N;
     return {
       abbr: t.abbr, name: t.name, pts: mp, ptsSd: Math.sqrt(Math.max(0, pts2 / N - mp * mp)), winPct: (win + st.tie / 2) / N,
-      players: roster.map((e) => { const line = zero() as any; for (const k in e.sum) line[k] = (e.sum as any)[k] / N; const mean = e.fpSum / N; return { name: e.p.name, pos: e.p.pos, fp: mean, sd: Math.sqrt(Math.max(0, e.fp2 / N - mean * mean)), line,
+      players: roster.map((e) => { const line = zero() as any; for (const k in e.sum) line[k] = (e.sum as any)[k] / N; const mean = e.fpSum / N; return { name: e.p.name, pos: e.p.pos, depth: e.p.depth, fp: mean, sd: Math.sqrt(Math.max(0, e.fp2 / N - mean * mean)), line,
         p10: pctOf(e.hist, N, 0.10), p50: pctOf(e.hist, N, 0.50), p90: pctOf(e.hist, N, 0.90),
         boomPct: e.boom / N, bustPct: e.bust / N }; }).sort((a, b) => b.fp - a.fp),
     };
@@ -1640,12 +1760,17 @@ function Index() {
       // Fetched once per league change and applied to whichever dataset wins below, so the cut
       // happens in exactly one place rather than being repeated down each fallback path.
       const inj = await loadInjuries(league);
+      const usage = await loadUsage(league);      // real per-player season usage, keyed to current teams
       const withInj = async (d: DataSet): Promise<DataSet> => {
-        // roster first: someone traded away should not also be reported as an injury cut
+        // Usage first — it carries each player's CURRENT team, so it replaces stale rosters wholesale
+        // rather than trying to repair them. The roster pass then removes anyone who has stats but is
+        // on IR or the practice squad, and the injury pass removes anyone ruled out this week.
+        const afterUsage = applyUsage(d.T, usage);
         const rr = d.teamIds?.length ? await loadRosters(league, d.teamIds) : { byTeam: new Map<string, Set<string>>(), dropped: [], fetched: false };
-        const afterRoster = applyRosters(d.T, rr);
-        const { T, removed } = applyInjuries(afterRoster.T, inj);
-        return { ...d, T, inj: { ...inj, cut: removed }, offRoster: afterRoster.dropped, staleTeams: afterRoster.stale };
+        const afterRoster = applyRosters(afterUsage.T, rr);
+        const { T: afterInj, removed } = applyInjuries(afterRoster.T, inj);
+        const T = reslot(afterInj);                 // depth chart last, so cuts promote the man behind
+        return { ...d, T, inj: { ...inj, cut: removed }, offRoster: afterRoster.dropped, staleTeams: afterRoster.stale, liveTeams: afterUsage.live };
       };
       if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(await withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
       try { const d = await loadESPN(base, league); if (alive) { setData(await withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
@@ -1718,7 +1843,7 @@ function Index() {
       <div style={{ padding: 6 }}>
         {t.players.map((p) => (
           <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderBottom: `1px solid #14261f` }}>
-            <span style={{ width: 30, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.pos}</span>
+            <span style={{ width: 30, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.depth || p.pos}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name}</div>
               <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statLine(p)}</div>
@@ -1798,7 +1923,7 @@ function Index() {
                     {shownRanks.map((p, i) => (
                       <div key={p.team + p.name + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: `1px solid #14261f` }}>
                         <span style={{ width: 26, textAlign: "right", fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.mut, fontFamily: "ui-monospace,monospace" }}>{i + 1}</span>
-                        <span style={{ width: 28, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.pos}</span>
+                        <span style={{ width: 28, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.depth || p.pos}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name} <span style={{ color: C.mut, fontWeight: 400, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span>{p.slot ? <span style={{ color: C.field, fontWeight: 600, fontSize: 11, marginLeft: 6 }}>{p.slot}</span> : null}</div>
                           <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statLine(p)}</div>
@@ -1844,6 +1969,10 @@ function Index() {
                     </div>
                   </div>
                 )}
+                <div style={{ fontSize: 11, color: C.mut, marginBottom: 10 }}>
+                  rosters: <span style={{ color: C.field }}>{data.liveTeams?.length ?? 0}</span> team(s) on live season usage
+                  {(data.liveTeams?.length ?? 0) > 0 && <> · about {Math.round(Object.entries(data.T).filter(([a]) => data.liveTeams!.includes(a)).reduce((n, [, t]) => n + t.players.length, 0) / Math.max(1, data.liveTeams!.length))} players per team</>}
+                </div>
                 {(data.staleTeams?.length ?? 0) > 0 && (
                   <div style={{ marginBottom: 10, fontSize: 11, color: C.gold }}>
                     ⚠ {data.staleTeams!.join(", ")} — roster match failed, these teams are still showing stale players.
