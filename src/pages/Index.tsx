@@ -1307,7 +1307,68 @@ const TEAM_NAMES: Record<string, string> = {
 };
 
 /* ---- live data layer: proxy Worker (SportsDataIO → nflverse) with curated fallback ---- */
-type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number };
+type DataSet = { T: Record<string, Team>; games: Game[]; source: string; week: number | null; skipped?: number; inj?: InjReport };
+
+/* =========================================================================================
+   INJURIES — ESPN publishes a league-wide report, CORS-open, no proxy or key needed.
+   Anyone Out / on IR / Doubtful / Questionable is cut from the roster before the sim runs.
+   The sim previously had no status check at all, so players who were not going to take a
+   snap were being projected at full season usage.
+   ========================================================================================= */
+type InjRow = { name: string; pos: string; team: string; status: string; detail: string; note: string };
+type InjReport = { byName: Map<string, InjRow>; cut: InjRow[]; total: number; fetched: boolean };
+const CUT_STATUS = new Set(["out", "injured reserve", "doubtful", "questionable"]);
+// The two feeds share no common name form: the baked rosters store "J.Brissett" while ESPN's injury
+// report says "Jacoby Brissett". Matching on the normalised full string found 2 of 1078 players and cut
+// nobody — the filter was silently inert. First-initial + last-name + position is the one key both sides
+// can produce, and it lifts the match to 181 with 33 cut. Position is in the key because it removes
+// almost every collision; only 2 remain across the whole 800-row feed.
+const nameKey = (n: string, pos?: string) => {
+  const t = String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, " ").replace(/[^a-z. ]/g, " ").replace(/\s+/g, " ").trim();
+  const parts = (t.includes(".") ? t.split(".") : t.split(" ")).map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return "";
+  return (parts[0][0] || "") + "|" + parts[parts.length - 1].replace(/\s/g, "") + "|" + (pos || "");
+};
+
+async function loadInjuries(league: "nfl" | "cfb"): Promise<InjReport> {
+  const empty: InjReport = { byName: new Map(), cut: [], total: 0, fetched: false };
+  const path = league === "cfb" ? "college-football" : "nfl";
+  try {
+    const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/${path}/injuries`);
+    if (!r.ok) return empty;
+    const d = await r.json();
+    const rows: InjRow[] = [];
+    for (const t of (d?.injuries || [])) for (const i of (t?.injuries || [])) {
+      const nm = i?.athlete?.displayName; if (!nm) continue;
+      rows.push({
+        name: nm, pos: i?.athlete?.position?.abbreviation || "", team: t?.displayName || "",
+        status: String(i?.status || ""), detail: String(i?.details?.type || ""),
+        note: String(i?.shortComment || i?.longComment || ""),
+      });
+    }
+    const byName = new Map<string, InjRow>();
+    for (const row of rows) byName.set(nameKey(row.name, row.pos), row);
+    return { byName, cut: rows.filter((x) => CUT_STATUS.has(x.status.toLowerCase())), total: rows.length, fetched: rows.length > 0 };
+  } catch { return empty; }
+}
+
+// Remove the unavailable, and hand back what was removed so the UI can show it rather than
+// silently changing the numbers.
+function applyInjuries(T: Record<string, Team>, inj: InjReport): { T: Record<string, Team>; removed: InjRow[] } {
+  if (!inj.fetched) return { T, removed: [] };
+  const removed: InjRow[] = [];
+  const out: Record<string, Team> = {};
+  for (const [abbr, t] of Object.entries(T)) {
+    const keep = t.players.filter((p) => {
+      const hit = inj.byName.get(nameKey(p.name, p.pos));
+      if (hit && CUT_STATUS.has(hit.status.toLowerCase())) { removed.push({ ...hit, team: abbr }); return false; }
+      return true;
+    });
+    out[abbr] = keep.length === t.players.length ? t : { ...t, players: keep };
+  }
+  return { T: out, removed };
+}
 const CURATED: DataSet = { T: CURATED_T, games: CURATED_GAMES, source: "curated", week: null };
 
 async function fetchJSON(url: string, ms = 7000): Promise<any> {
@@ -1399,23 +1460,35 @@ function simPlayer(p: Player, d: Team["def"], hm: number, pace: number, r: () =>
   return { line: l, teamTD };
 }
 
-type PRes = { name: string; pos: Pos; fp: number; sd: number; line: Line };
+type PRes = { name: string; pos: Pos; fp: number; sd: number; line: Line; p10: number; p50: number; p90: number; boomPct: number; bustPct: number };
 type RankRow = PRes & { team: string; opp: string; home: boolean; slot: string };  // a player pooled across the whole slate, with their game's kickoff
 type TRes = { abbr: string; name: string; pts: number; ptsSd: number; winPct: number; players: PRes[] };
 
 /* Incremental runner so a big N genuinely animates a progress bar and each RUN
    uses a fresh random seed (so results carry real Monte-Carlo variation run-to-run,
    converging as N grows — never a canned, identical answer). */
-type Acc = { p: Player; sum: Line; fpSum: number; fp2: number };
+/* A 0.5-point histogram per player. The per-sim spread is the whole story here — a WR1's fantasy
+   points have a standard deviation around 7 — and collapsing it to a mean is what made the output
+   look identical run to run. Storing every sample would be ~20 players x N doubles; 200 buckets is
+   a few KB and answers any percentile. */
+const HB = 200, HW = 0.5;                                     // 200 buckets x 0.5 pt = 0-100 pts
+const pctOf = (h: Uint32Array, n: number, q: number) => {
+  let want = q * n, c = 0;
+  for (let i = 0; i < HB; i++) { c += h[i]; if (c >= want) return i * HW; }
+  return (HB - 1) * HW;
+};
+type Acc = { p: Player; sum: Line; fpSum: number; fp2: number; hist: Uint32Array; boom: number; bust: number };
 type SimState = { home: Team; away: Team; H: Acc[]; A: Acc[]; r: () => number; pace: number; done: number; winH: number; winA: number; tie: number; ptsH: number; ptsA: number; ptsH2: number; ptsA2: number };
 
-const mkAcc = (t: Team): Acc[] => t.players.map((p) => ({ p, sum: zero(), fpSum: 0, fp2: 0 }));
+const mkAcc = (t: Team): Acc[] => t.players.map((p) => ({ p, sum: zero(), fpSum: 0, fp2: 0, hist: new Uint32Array(HB), boom: 0, bust: 0 }));
 function simInit(home: Team, away: Team, seed: number): SimState {
   return { home, away, H: mkAcc(home), A: mkAcc(away), r: mul(seed), pace: (home.pace + away.pace) / 2, done: 0, winH: 0, winA: 0, tie: 0, ptsH: 0, ptsA: 0, ptsH2: 0, ptsA2: 0 };
 }
 function runTeam(st: SimState, roster: Acc[], oppDef: Team["def"], hm: number): number {
   let td = 0;
-  for (const e of roster) { const { line, teamTD } = simPlayer(e.p, oppDef, hm, st.pace, st.r); td += teamTD; for (const k in line) (e.sum as any)[k] += (line as any)[k]; const fp = fpOf(line); e.fpSum += fp; e.fp2 += fp * fp; }
+  for (const e of roster) { const { line, teamTD } = simPlayer(e.p, oppDef, hm, st.pace, st.r); td += teamTD; for (const k in line) (e.sum as any)[k] += (line as any)[k]; const fp = fpOf(line); e.fpSum += fp; e.fp2 += fp * fp;
+    e.hist[Math.min(HB - 1, Math.max(0, Math.floor(fp / HW)))]++;   // one bucket per sim → percentiles for free
+    if (fp >= 20) e.boom++; if (fp < 10) e.bust++; }
   return td * 7 + pois(st.r, 1.6) * 3;
 }
 function simStep(st: SimState, k: number) {
@@ -1432,7 +1505,9 @@ function simFinish(st: SimState): { home: TRes; away: TRes } {
     const mp = pts / N;
     return {
       abbr: t.abbr, name: t.name, pts: mp, ptsSd: Math.sqrt(Math.max(0, pts2 / N - mp * mp)), winPct: (win + st.tie / 2) / N,
-      players: roster.map((e) => { const line = zero() as any; for (const k in e.sum) line[k] = (e.sum as any)[k] / N; const mean = e.fpSum / N; return { name: e.p.name, pos: e.p.pos, fp: mean, sd: Math.sqrt(Math.max(0, e.fp2 / N - mean * mean)), line }; }).sort((a, b) => b.fp - a.fp),
+      players: roster.map((e) => { const line = zero() as any; for (const k in e.sum) line[k] = (e.sum as any)[k] / N; const mean = e.fpSum / N; return { name: e.p.name, pos: e.p.pos, fp: mean, sd: Math.sqrt(Math.max(0, e.fp2 / N - mean * mean)), line,
+        p10: pctOf(e.hist, N, 0.10), p50: pctOf(e.hist, N, 0.50), p90: pctOf(e.hist, N, 0.90),
+        boomPct: e.boom / N, bustPct: e.bust / N }; }).sort((a, b) => b.fp - a.fp),
     };
   };
   return { home: finish(st.home, st.H, st.ptsH, st.ptsH2, st.winH), away: finish(st.away, st.A, st.ptsA, st.ptsA2, st.winA) };
@@ -1442,6 +1517,23 @@ function simFinish(st: SimState): { home: TRes; away: TRes } {
 const C = { bg: "#0a1410", panel: "#10201a", panel2: "#16281f", line: "#1f3a30", chalk: "#eaf3ee", mut: "#7fa394", field: "#2fbd6f", gold: "#ffd23f", red: "#ff5a52" };
 const box = { background: "#10201a", border: "1px solid #1f3a30", borderRadius: 12 };
 const num = (n: number, d = 1) => n.toFixed(d);
+
+/* The spread was always being computed and then discarded into a single mean. p10/p50/p90 is the
+   part a fantasy decision actually turns on: two players can share a 16-point average while one
+   ranges 12-20 and the other 2-40. */
+function Spread({ p, small }: { p: PRes; small?: boolean }) {
+  const fs2 = small ? 9 : 10;
+  return (
+    <div style={{ fontSize: fs2, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap" }}>
+      <span style={{ color: C.red }}>{num(p.p10)}</span>
+      <span style={{ opacity: 0.5 }}> / </span>
+      <span style={{ color: C.chalk }}>{num(p.p50)}</span>
+      <span style={{ opacity: 0.5 }}> / </span>
+      <span style={{ color: C.field }}>{num(p.p90)}</span>
+      {!small && <span style={{ opacity: 0.7 }}>  ·  boom {Math.round(p.boomPct * 100)}% bust {Math.round(p.bustPct * 100)}%</span>}
+    </div>
+  );
+}
 
 function statLine(p: PRes): string {
   const l = p.line;
@@ -1475,9 +1567,16 @@ function Index() {
     (async () => {
       setLoading(true);
       const base = league === "cfb" ? CFB_T : CURATED_T;
-      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(d); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
-      try { const d = await loadESPN(base, league); if (alive) { setData(d); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
-      if (alive) { setData(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED); setLoading(false); }
+      // Fetched once per league change and applied to whichever dataset wins below, so the cut
+      // happens in exactly one place rather than being repeated down each fallback path.
+      const inj = await loadInjuries(league);
+      const withInj = (d: DataSet): DataSet => {
+        const { T, removed } = applyInjuries(d.T, inj);
+        return { ...d, T, inj: { ...inj, cut: removed } };
+      };
+      if (league === "nfl" && proxy) { try { const d = await loadLive(proxy); if (alive) { setData(withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ } }
+      try { const d = await loadESPN(base, league); if (alive) { setData(withInj(d)); setSel(null); setRes(null); setRanks(null); setLoading(false); } return; } catch { /* fall back */ }
+      if (alive) { setData(withInj(league === "cfb" ? { T: CFB_T, games: [], source: "curated", week: null } : CURATED)); setLoading(false); }
     })();
     return () => { alive = false; };
   }, [proxy, league]);
@@ -1553,7 +1652,7 @@ function Index() {
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 17, fontWeight: 800, color: C.chalk }}>{num(p.fp)}</div>
-              <div style={{ fontSize: 10, color: C.mut }}>±{num(p.sd)} FP</div>
+              <Spread p={p} />
             </div>
           </div>
         ))}
@@ -1633,7 +1732,7 @@ function Index() {
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 16, fontWeight: 800, color: C.chalk }}>{num(p.fp)}</div>
-                          <div style={{ fontSize: 10, color: C.mut }}>±{num(p.sd)}</div>
+                          <Spread p={p} small />
                         </div>
                       </div>
                     ))}
@@ -1655,6 +1754,26 @@ function Index() {
                 </button>
               ))}
             </div>
+            {/* The cut changes every projection on the page, so it is shown rather than applied silently. */}
+            {data.inj?.fetched && (
+              <div style={{ marginTop: 18, ...box, padding: "12px 14px" }}>
+                <div style={{ fontSize: 12, color: C.chalk, fontWeight: 700, marginBottom: 6 }}>
+                  injury cut · {data.inj.cut.length} player{data.inj.cut.length === 1 ? "" : "s"} removed
+                  <span style={{ color: C.mut, fontWeight: 400 }}> — Out / IR / Doubtful / Questionable are not simulated</span>
+                </div>
+                {data.inj.cut.length === 0
+                  ? <div style={{ fontSize: 11, color: C.mut }}>nobody on this slate is ruled out.</div>
+                  : <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
+                      {data.inj.cut.slice(0, 40).map((i, k) => (
+                        <span key={k}>
+                          <span style={{ color: C.red }}>{i.status.toLowerCase() === "questionable" ? "Q" : i.status.toLowerCase() === "doubtful" ? "D" : "O"}</span>
+                          {" "}<span style={{ color: C.chalk }}>{i.name}</span> {i.pos}{i.detail ? " (" + i.detail + ")" : ""}
+                        </span>
+                      ))}
+                      {data.inj.cut.length > 40 && <span>+{data.inj.cut.length - 40} more</span>}
+                    </div>}
+              </div>
+            )}
             <p style={{ marginTop: 22, fontSize: 11, color: C.mut, lineHeight: 1.6 }}>
               Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Every RUN reseeds, so results carry real sampling variation and converge as N grows — never a canned answer. {data.source === "espn" ? `This week's real ${league === "cfb" ? "NCAA" : "NFL"} slate is pulled live from ESPN; player usage is the real 2025-season baseline${league === "nfl" ? ". Add a proxy via ⚙ for live season-to-date usage." : " for all FBS teams."}` : data.source === "curated" ? "Live slate unavailable — showing no games; try again shortly." : `This week's slate + live per-player usage (${srcLabel.replace("live · ", "")}).`}
             </p>
@@ -1688,7 +1807,7 @@ function Index() {
                 <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
                   <Team t={res.away} /><Team t={res.home} />
                 </div>
-                <div style={{ marginTop: 10, fontSize: 11, color: C.mut, textAlign: "center" }}>each player: avg fantasy points (PPR) ± std-dev, with the averaged stat line across all {res.n.toLocaleString()} sims.</div>
+                <div style={{ marginTop: 10, fontSize: 11, color: C.mut, textAlign: "center" }}>each player: mean PPR, then <span style={{ color: C.red }}>floor</span> / <span style={{ color: C.chalk }}>median</span> / <span style={{ color: C.field }}>ceiling</span> (10th / 50th / 90th percentile across the sims). boom = 20+ pts, bust = under 10. The mean converges as N grows; the spread is what does not. Averaged stat line across all {res.n.toLocaleString()} sims.</div>
               </>
             )}
           </>
