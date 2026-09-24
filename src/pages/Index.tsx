@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  type Pos, type Player, type Team, type Line, type PRes, type TRes, type Capture,
+  simInit, simStep, simFinish, zero, fpOf, clamp, regressToPrior, HB, HW,
+} from "../lib/sim";
+import { optimize, suggestTarget, SLOTS, type SlatePlayer, type Joint, type Lineup } from "../lib/dfs";
 
 /* =========================================================================================
    GRIDIRON SIM — a real Monte-Carlo NFL game simulator.
-   Each sim: team pace → play volume → per-player usage (carries/targets) → matchup-adjusted
+   Each sim: one shared game environment → team volume → per-player SHARES of it → matchup-adjusted
    efficiency (offense vs the opponent's pass/run defense) → player-vs-player (WR1 vs the
-   opponent's top CB) → home-field → real distributions (Gaussian yards, Poisson TDs, Binomial
-   catches) → PPR fantasy points. Averaged over N sims. Not random noise — model expectations
-   that converge as N grows.
+   opponent's top CB) → home-field → real distributions. The quarterback's line is aggregated from
+   what his receivers did rather than drawn separately, so a QB and his WR1 correlate at about
+   +0.6 the way they do in reality. The engine lives in src/lib/sim.ts; the lineup search over its
+   joint samples is in src/lib/dfs.ts.
 
    DATA: pulls the live week's slate + real per-player usage from the proxy Worker
    (SportsDataIO first, free nflverse feeds as backup). If no proxy is configured or it's
@@ -17,20 +23,7 @@ import { useEffect, useState } from "react";
 // Paste your deployed Cloudflare Worker URL here (or set it at runtime via the ⚙ control).
 const DEFAULT_PROXY = "";
 
-type Pos = "QB" | "RB" | "WR" | "TE";
-type Player = {
-  name: string; pos: Pos;
-  // QB
-  pAtt?: number; cmp?: number; ypa?: number; pTD?: number; iNT?: number; rYd?: number; rTD?: number;
-  // RB
-  car?: number; ypc?: number; ruTD?: number;
-  // pass-catchers (RB/WR/TE)
-  tgt?: number; cr?: number; ypr?: number; recTD?: number; wr1?: boolean;
-  // Depth-chart label (WR1/RB2/TE1…). DERIVED, never baked: it is stamped after injuries and
-  // roster cuts land, so benching a team's WR1 promotes WR2 into the slot instead of leaving a hole.
-  depth?: string;
-};
-type Team = { abbr: string; name: string; pace: number; def: { pass: number; run: number; cb: number }; players: Player[] };
+export type { Pos, Player, Team, Line, PRes, TRes } from "../lib/sim";
 
 /* per-game BASE lines vs an average defense at a neutral site (grounded in recent real usage).
    Used as the offline fallback when the live proxy isn't configured/reachable. */
@@ -1289,7 +1282,13 @@ const CFB_T: Record<string, Team> = {
     { name: "Eric Richardson", pos: "WR", tgt: 1.4, cr: 0.6, ypr: 11.2, recTD: 0.08 } ] },
 };
 type League = "nfl" | "cfb";
-type Game = { away: string; home: string; slot: string; awayRank?: number; homeRank?: number };
+type Game = {
+  away: string; home: string; slot: string; awayRank?: number; homeRank?: number;
+  // Vegas, straight off the ESPN scoreboard. The implied team total — half the game total, shifted
+  // by half the spread — is the single best outside check on an offence's scoring environment, and
+  // it costs nothing since the slate call already carries it.
+  ou?: number; spreadHome?: number; impHome?: number; impAway?: number;
+};
 const CURATED_GAMES: Game[] = [
   { away: "KC", home: "BUF", slot: "Sun · 4:25 PM" },
   { away: "PHI", home: "DAL", slot: "Sun · 8:20 PM" },
@@ -1416,7 +1415,7 @@ async function loadUsage(league: "nfl" | "cfb"): Promise<Record<string, Player[]
       p.recTD = per("receiving", "receivingTouchdowns");
       if (!(tgt >= 0.5)) continue;
     }
-    (byTeam[team] ??= []).push(p);
+    (byTeam[team] ??= []).push(regressToPrior(p, gp));
   }
   return byTeam;
 }
@@ -1609,104 +1608,70 @@ async function loadESPN(T: Record<string, Team>, league: League): Promise<DataSe
     const dt = new Date(e.date);
     const slot = isNaN(+dt) ? `Week ${week ?? ""}` : dt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const rk = (c: any) => { const r = Number(c?.curatedRank?.current); return r > 0 && r < 99 ? r : undefined; }; // AP rank (CFB only) — shown on the game card
-    games.push({ away, home, slot, awayRank: rk(aC), homeRank: rk(hC) });
+    /* details reads like "BUF -7" — the abbreviation names who is laying the points, so it has to
+         be matched against the home side rather than assumed to be signed from the home view. */
+      const od = (comp as any).odds?.[0];
+      const ou = Number(od?.overUnder) || undefined;
+      let spreadHome: number | undefined, impHome: number | undefined, impAway: number | undefined;
+      const dm = String(od?.details || "").match(/^([A-Z]{2,4})\s*([+-]?[\d.]+)/);
+      if (dm) { const n = Number(dm[2]); if (isFinite(n)) spreadHome = canon(dm[1]) === home ? n : -n; }
+      if (ou != null && spreadHome != null) { impHome = +(ou / 2 - spreadHome / 2).toFixed(1); impAway = +(ou - impHome).toFixed(1); }
+      games.push({ away, home, slot, awayRank: rk(aC), homeRank: rk(hC), ou, spreadHome, impHome, impAway });
     for (const [ab, c] of [[away, aC], [home, hC]] as const) { const id = c?.team?.id; if (id && !ids.has(ab)) ids.set(ab, String(id)); }
   }
   if (!games.length) throw new Error("no ESPN games matched the dataset");
   return { T, games, source: "espn", week, skipped, teamIds: [...ids].map(([abbr, id]) => ({ abbr, id })) };
 }
 
-/* ---- seeded RNG + distributions ---- */
-const mul = (a: number) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const gauss = (r: () => number, m: number, s: number) => { const u = r() || 1e-9; return m + s * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); };
-const pois = (r: () => number, l: number) => { if (l <= 0) return 0; const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= r(); } while (p > L && k < 40); return k - 1; };
-const binom = (r: () => number, n: number, p: number) => { let c = 0; for (let i = 0; i < n; i++) if (r() < p) c++; return c; };
-
-type Line = { pAtt: number; cmp: number; pYd: number; pTD: number; int: number; car: number; ruYd: number; ruTD: number; tgt: number; rec: number; reYd: number; reTD: number };
-const zero = (): Line => ({ pAtt: 0, cmp: 0, pYd: 0, pTD: 0, int: 0, car: 0, ruYd: 0, ruTD: 0, tgt: 0, rec: 0, reYd: 0, reTD: 0 });
-const fpOf = (l: Line) => l.pYd * 0.04 + l.pTD * 4 - l.int * 2 + l.ruYd * 0.1 + l.ruTD * 6 + l.rec + l.reYd * 0.1 + l.reTD * 6;
-
-function simPlayer(p: Player, d: Team["def"], hm: number, pace: number, r: () => number): { line: Line; teamTD: number } {
-  const l = zero(); let teamTD = 0;
-  if (p.pos === "QB") {
-    const att = Math.max(8, Math.round(gauss(r, p.pAtt! * pace, p.pAtt! * 0.12)));
-    l.pAtt = att; l.cmp = binom(r, att, clamp(p.cmp!, 0.35, 0.82));
-    l.pYd = Math.max(0, Math.round(gauss(r, att * p.ypa! * d.pass * hm, att * p.ypa! * 0.22)));
-    l.pTD = pois(r, p.pTD! * d.pass * hm * pace); l.int = pois(r, p.iNT! * (2 - d.pass));
-    l.ruYd = Math.max(0, Math.round(gauss(r, p.rYd! * d.run * hm, Math.max(6, p.rYd! * 0.4)))); l.ruTD = pois(r, p.rTD! * pace);
-    teamTD = l.pTD + l.ruTD;
-  } else if (p.pos === "RB") {
-    const car = Math.max(0, Math.round(gauss(r, p.car! * pace, p.car! * 0.16)));
-    l.car = car; l.ruYd = Math.max(0, Math.round(gauss(r, car * p.ypc! * d.run * hm, Math.max(10, car * p.ypc! * 0.3)))); l.ruTD = pois(r, p.ruTD! * d.run * pace);
-    l.tgt = Math.max(0, Math.round(gauss(r, p.tgt! * pace, Math.max(1, p.tgt! * 0.35)))); l.rec = binom(r, l.tgt, clamp(p.cr!, 0.3, 0.95));
-    l.reYd = Math.max(0, Math.round(gauss(r, l.rec * p.ypr! * hm, Math.max(6, l.rec * p.ypr! * 0.35)))); l.reTD = pois(r, p.recTD!);
-    teamTD = l.ruTD;
-  } else {
-    const mm = d.pass * (p.wr1 ? d.cb : 1) * hm;
-    l.tgt = Math.max(0, Math.round(gauss(r, p.tgt! * pace, Math.max(1, p.tgt! * 0.28)))); l.rec = binom(r, l.tgt, clamp(p.cr!, 0.3, 0.9));
-    l.reYd = Math.max(0, Math.round(gauss(r, l.rec * p.ypr! * mm, Math.max(8, l.rec * p.ypr! * 0.35)))); l.reTD = pois(r, p.recTD! * mm * pace);
-  }
-  return { line: l, teamTD };
-}
-
-type PRes = { name: string; pos: Pos; depth?: string; fp: number; sd: number; line: Line; p10: number; p50: number; p90: number; boomPct: number; bustPct: number };
-type RankRow = PRes & { team: string; opp: string; home: boolean; slot: string };  // a player pooled across the whole slate, with their game's kickoff
-type TRes = { abbr: string; name: string; pts: number; ptsSd: number; winPct: number; players: PRes[] };
-
-/* Incremental runner so a big N genuinely animates a progress bar and each RUN
-   uses a fresh random seed (so results carry real Monte-Carlo variation run-to-run,
-   converging as N grows — never a canned, identical answer). */
-/* A 0.5-point histogram per player. The per-sim spread is the whole story here — a WR1's fantasy
-   points have a standard deviation around 7 — and collapsing it to a mean is what made the output
-   look identical run to run. Storing every sample would be ~20 players x N doubles; 200 buckets is
-   a few KB and answers any percentile. */
-const HB = 200, HW = 0.5;                                     // 200 buckets x 0.5 pt = 0-100 pts
-const pctOf = (h: Uint32Array, n: number, q: number) => {
-  let want = q * n, c = 0;
-  for (let i = 0; i < HB; i++) { c += h[i]; if (c >= want) return i * HW; }
-  return (HB - 1) * HW;
+/* A player pooled across the whole slate. `key` identifies them to the lineup search, and
+   `col` points at their column in the joint simulation buffer. */
+type RankRow = PRes & {
+  key: string; team: string; opp: string; home: boolean; slot: string; game: string; col: number;
+  ou?: number; spread?: number; implied?: number;   // Vegas, from the ESPN scoreboard
+  dvp?: number;                                     // opponent rank vs this position, 1 = toughest
 };
-type Acc = { p: Player; sum: Line; fpSum: number; fp2: number; hist: Uint32Array; boom: number; bust: number };
-type SimState = { home: Team; away: Team; H: Acc[]; A: Acc[]; r: () => number; pace: number; done: number; winH: number; winA: number; tie: number; ptsH: number; ptsA: number; ptsH2: number; ptsA2: number };
 
-const mkAcc = (t: Team): Acc[] => t.players.map((p) => ({ p, sum: zero(), fpSum: 0, fp2: 0, hist: new Uint32Array(HB), boom: 0, bust: 0 }));
-function simInit(home: Team, away: Team, seed: number): SimState {
-  return { home, away, H: mkAcc(home), A: mkAcc(away), r: mul(seed), pace: (home.pace + away.pace) / 2, done: 0, winH: 0, winA: 0, tie: 0, ptsH: 0, ptsA: 0, ptsH2: 0, ptsA2: 0 };
-}
-function runTeam(st: SimState, roster: Acc[], oppDef: Team["def"], hm: number): number {
-  let td = 0;
-  for (const e of roster) { const { line, teamTD } = simPlayer(e.p, oppDef, hm, st.pace, st.r); td += teamTD; for (const k in line) (e.sum as any)[k] += (line as any)[k]; const fp = fpOf(line); e.fpSum += fp; e.fp2 += fp * fp;
-    e.hist[Math.min(HB - 1, Math.max(0, Math.floor(fp / HW)))]++;   // one bucket per sim → percentiles for free
-    if (fp >= 20) e.boom++; if (fp < 10) e.bust++; }
-  return td * 7 + pois(st.r, 1.6) * 3;
-}
-function simStep(st: SimState, k: number) {
-  for (let i = 0; i < k; i++) {
-    const pH = runTeam(st, st.H, st.away.def, 1.03), pA = runTeam(st, st.A, st.home.def, 0.985);
-    st.ptsH += pH; st.ptsA += pA; st.ptsH2 += pH * pH; st.ptsA2 += pA * pA;
-    if (pH > pA) st.winH++; else if (pA > pH) st.winA++; else st.tie++;
+/* Per-simulation outcomes kept for the lineup search, capped independently of the projection run.
+   4 bytes per player per sim: a 13-game slate is roughly 250 players, so 8000 sims is about 8 MB —
+   and a hit rate is already resolved to well under a percentage point at that sample. */
+const JOINT_SIMS = 8000;
+
+/* Defense vs position, the matchup column every DFS board carries. Ours is not scraped from
+   points-allowed tables — it is the same defensive rating the simulation itself applied, so the
+   column and the projection can never tell different stories. Rank 1 is the TOUGHEST draw. */
+function applyDvp(rows: RankRow[], TT: Record<string, Team>) {
+  const opps = [...new Set(rows.map((r) => r.opp))];
+  for (const pos of ["QB", "RB", "WR", "TE"] as Pos[]) {
+    const mult = (t: string) => { const d = TT[t]?.def; return !d ? 1 : pos === "RB" ? d.run : d.pass * (pos === "WR" ? d.cb : 1); };
+    const rank = new Map(opps.slice().sort((a, b) => mult(a) - mult(b)).map((t, i) => [t, i + 1]));
+    for (const r of rows) if (r.pos === pos) r.dvp = rank.get(r.opp);
   }
-  st.done += k;
 }
-function simFinish(st: SimState): { home: TRes; away: TRes } {
-  const N = Math.max(1, st.done);
-  const finish = (t: Team, roster: Acc[], pts: number, pts2: number, win: number): TRes => {
-    const mp = pts / N;
-    return {
-      abbr: t.abbr, name: t.name, pts: mp, ptsSd: Math.sqrt(Math.max(0, pts2 / N - mp * mp)), winPct: (win + st.tie / 2) / N,
-      players: roster.map((e) => { const line = zero() as any; for (const k in e.sum) line[k] = (e.sum as any)[k] / N; const mean = e.fpSum / N; return { name: e.p.name, pos: e.p.pos, depth: e.p.depth, fp: mean, sd: Math.sqrt(Math.max(0, e.fp2 / N - mean * mean)), line,
-        p10: pctOf(e.hist, N, 0.10), p50: pctOf(e.hist, N, 0.50), p90: pctOf(e.hist, N, 0.90),
-        boomPct: e.boom / N, bustPct: e.bust / N }; }).sort((a, b) => b.fp - a.fp),
-    };
-  };
-  return { home: finish(st.home, st.H, st.ptsH, st.ptsH2, st.winH), away: finish(st.away, st.A, st.ptsA, st.ptsA2, st.winA) };
-}
+
+/* The board's columns. Every one is read off the SAME simulation — none is scraped from a
+   projections feed or a points-allowed table — so no two columns can tell different stories.
+   Floor and Ceiling are the point: a single projection hides which of two equal players is the
+   safe one and which is the swing, and that difference is the entire decision. */
+type BoardCol = { k: string; label: string; hint: string; get: (p: RankRow) => number | null; fmt: (v: number) => string; good?: "hi" | "lo" };
+const pctFmt = (v: number) => Math.round(v * 100) + "%";
+const BOARD_COLS: BoardCol[] = [
+  { k: "implied", label: "IMP", hint: "Vegas implied team total — half the game total shifted by half the spread. The scoring environment this player is walking into.", get: (p) => p.implied ?? null, fmt: (v) => v.toFixed(1), good: "hi" },
+  { k: "dvp", label: "DvP", hint: "Defense vs this position among slate opponents. 1 is the toughest draw. Taken from the same defensive rating the simulation applied.", get: (p) => p.dvp ?? null, fmt: (v) => String(v), good: "hi" },
+  { k: "p10", label: "FLOOR", hint: "10th percentile: this player scored at least this in 9 of 10 simulated games. What a cash lineup is built on.", get: (p) => p.p10, fmt: (v) => v.toFixed(1), good: "hi" },
+  { k: "fp", label: "PROJ", hint: "Mean across every simulation — the single number every other projection site shows you.", get: (p) => p.fp, fmt: (v) => v.toFixed(1), good: "hi" },
+  { k: "p90", label: "CEIL", hint: "90th percentile: reached in 1 game of 10. What actually wins a tournament.", get: (p) => p.p90, fmt: (v) => v.toFixed(1), good: "hi" },
+  { k: "tdPct", label: "TD%", hint: "Chance of scoring at least one touchdown, straight from the simulation's own scoring draws.", get: (p) => p.tdPct, fmt: pctFmt, good: "hi" },
+  { k: "boomPct", label: "BOOM", hint: "Share of simulations at 20+ fantasy points.", get: (p) => p.boomPct, fmt: pctFmt, good: "hi" },
+  { k: "bustPct", label: "BUST", hint: "Share of simulations under 10 fantasy points.", get: (p) => p.bustPct, fmt: pctFmt, good: "lo" },
+];
+const posColor = (pos: Pos) => (pos === "QB" ? "#ffd23f" : pos === "RB" ? "#57c7ff" : pos === "WR" ? "#ff8ad1" : "#c6a0ff");
 
 /* ---- UI ---- */
 const C = { bg: "#0a1410", panel: "#10201a", panel2: "#16281f", line: "#1f3a30", chalk: "#eaf3ee", mut: "#7fa394", field: "#2fbd6f", gold: "#ffd23f", red: "#ff5a52" };
 const box = { background: "#10201a", border: "1px solid #1f3a30", borderRadius: 12 };
 const num = (n: number, d = 1) => n.toFixed(d);
+const thCell: React.CSSProperties = { padding: "6px", fontSize: 10, fontWeight: 800, letterSpacing: 0.5, borderBottom: "1px solid #1f3a30", whiteSpace: "nowrap", userSelect: "none" };
+const tdCell: React.CSSProperties = { padding: "7px 6px", textAlign: "right", whiteSpace: "nowrap" };
 
 /* The spread was always being computed and then discarded into a single mean. p10/p50/p90 is the
    part a fantasy decision actually turns on: two players can share a 16-point average while one
@@ -1747,9 +1712,14 @@ function Index() {
   const [draft, setDraft] = useState(proxy);
   const [league, setLeague] = useState<League>(() => { try { return (localStorage.getItem("gs_league") as League) || "nfl"; } catch { return "nfl"; } });
   const [ranks, setRanks] = useState<RankRow[] | null>(null);
+  const [joint, setJoint] = useState<Joint | null>(null);
+  const [lineups, setLineups] = useState<Lineup[] | null>(null);
+  const [lineupBusy, setLineupBusy] = useState(false);
+  const [target, setTarget] = useState(0);
   const [rankBusy, setRankBusy] = useState(false);
   const [rankProg, setRankProg] = useState(0);
   const [posFilter, setPosFilter] = useState<"ALL" | Pos>("ALL");
+  const [sortKey, setSortKey] = useState("fp");
 
   // resolve data: Worker (NFL only, full live) → ESPN real slate + baked usage → offline demo
   useEffect(() => {
@@ -1802,31 +1772,83 @@ function Index() {
     requestAnimationFrame(tick);
   };
 
-  // ---- SLATE RANKINGS: simulate EVERY game on the slate, pool the players, rank by projected FP ----
+  /* ---- SLATE BOARD: simulate EVERY game, KEEPING the per-sim outcomes side by side ----
+     The board is the marginal view of this run and the lineup search is the joint view of the very
+     same run, so a lineup's numbers can never quietly disagree with the board above it. */
   const runAll = () => {
     if (rankBusy || !games.length) return;
-    const n = clamp(Math.round(sims) || 1, 100, 20000);             // capped: this runs once per game on the slate
-    setRankBusy(true); setRanks(null); setRankProg(0);
+    const n = clamp(Math.round(sims) || 1, 100, 20000);
+    // Joint samples are capped separately from n: they cost 4 bytes per player per simulation, and
+    // a few thousand already resolves a lineup's hit rate far past what the projections justify.
+    const jn = Math.min(n, JOINT_SIMS);
+    const nP = games.reduce((k, g) => k + (TT[g.home]?.players.length ?? 0) + (TT[g.away]?.players.length ?? 0), 0);
+    const buf = new Float32Array(nP * jn);
+    setRankBusy(true); setRanks(null); setRankProg(0); setLineups(null); setJoint(null);
     const rows: RankRow[] = [];
-    let gi = 0;
+    let gi = 0, base = 0;
     const step = () => {
       const t0 = performance.now();
-      while (gi < games.length && performance.now() - t0 < 30) {     // a few games per frame → the bar actually moves
-        const g = games[gi];
-        const st = simInit(TT[g.home], TT[g.away], ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0) || 1);
+      while (gi < games.length && performance.now() - t0 < 30) {
+        const g = games[gi], H = TT[g.home], A = TT[g.away];
+        if (!H || !A) { gi++; continue; }
+        const st = simInit(H, A, ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0) || 1,
+          { buf, max: jn, base }, { buf, max: jn, base: base + H.players.length });
         simStep(st, n);
         const out = simFinish(st);
-        for (const p of out.home.players) rows.push({ ...p, team: g.home, opp: g.away, home: true, slot: g.slot });
-        for (const p of out.away.players) rows.push({ ...p, team: g.away, opp: g.home, home: false, slot: g.slot });
+        const gid = `${g.away}@${g.home}`;
+        for (const [t, tr, off, opp, isHome, imp] of [
+          [H, out.home, base, g.away, true, g.impHome],
+          [A, out.away, base + H.players.length, g.home, false, g.impAway],
+        ] as const) {
+          // simFinish sorts by projection; the capture buffer is in ROSTER order, so columns are
+          // matched back by name. Pairing them positionally would silently mislabel every player.
+          t.players.forEach((pl, i) => {
+            const r = tr.players.find((x) => x.name === pl.name);
+            if (r) rows.push({ ...r, key: `${t.abbr}:${pl.name}`, team: t.abbr, opp, home: isHome, slot: g.slot,
+              game: gid, col: off + i, ou: g.ou, spread: isHome ? g.spreadHome : (g.spreadHome == null ? undefined : -g.spreadHome), implied: imp });
+          });
+        }
+        base += H.players.length + A.players.length;
         gi++;
       }
       setRankProg(gi / games.length);
       if (gi < games.length) requestAnimationFrame(step);
-      else { rows.sort((a, b) => b.fp - a.fp); setRanks(rows); setRankBusy(false); }
+      else {
+        rows.sort((a, b) => b.fp - a.fp);
+        applyDvp(rows, TT);
+        setRanks(rows); setJoint({ buf, sims: jn }); setRankBusy(false);
+      }
     };
     requestAnimationFrame(step);
   };
-  const shownRanks = ranks ? (posFilter === "ALL" ? ranks : ranks.filter((r) => r.pos === posFilter)) : [];
+
+  /* Build lineups out of the joint samples. Nothing here mentions stacking — the search finds it,
+     or does not, depending purely on how often those players reached the target together. */
+  const buildLineups = () => {
+    if (!ranks || !joint || lineupBusy) return;
+    setLineupBusy(true);
+    const t = target || defaultTarget;
+    // Yield a frame first so the button's busy state paints before the search blocks the thread.
+    requestAnimationFrame(() => {
+      const out = optimize(ranks, joint, { target: t, count: 8, restarts: 110, seed: ((Math.random() * 0xffffffff) >>> 0) || 1 });
+      setLineups(out); setTarget(t); setLineupBusy(false);
+    });
+  };
+  // Reading a percentile off the joint buffer means sorting thousands of floats, so it is computed
+  // when the simulation changes rather than on every keystroke and re-render.
+  const defaultTarget = useMemo(() => (ranks && joint ? suggestTarget(ranks, joint) : 0), [ranks, joint]);
+
+  const shownRanks = useMemo(() => {
+    if (!ranks) return [] as RankRow[];
+    const rows = posFilter === "ALL" ? ranks.slice() : ranks.filter((r) => r.pos === posFilter);
+    const col = BOARD_COLS.find((c) => c.k === sortKey);
+    if (col) rows.sort((a, b) => {
+      const x = col.get(a), y = col.get(b);
+      if (x == null) return 1; if (y == null) return -1;               // missing values sink, never sort to the top
+      return col.good === "lo" ? x - y : y - x;
+    });
+    return rows;
+  }, [ranks, posFilter, sortKey]);
 
   const live = data.source !== "curated";
   const srcLabel = data.source.includes("sportsdataio") ? "live · SportsDataIO" + (data.source.includes("nflverse") ? " + nflverse" : "")
@@ -1899,8 +1921,8 @@ function Index() {
             <div style={{ ...box, padding: 14, margin: "18px 0 4px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>Slate rankings</div>
-                  <div style={{ fontSize: 11, color: C.mut, marginTop: 2 }}>Simulate all {games.length} games and rank every player by projected fantasy points</div>
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>Value board</div>
+                  <div style={{ fontSize: 11, color: C.mut, marginTop: 2, maxWidth: 580 }}>Simulate all {games.length} games and show every player as a DISTRIBUTION — floor, projection and ceiling — instead of one number. Tap any column to sort by it.</div>
                 </div>
                 <button onClick={runAll} disabled={rankBusy || loading || !games.length} style={{ background: rankBusy || loading || !games.length ? "#16281f" : `linear-gradient(135deg,${C.gold},#d89b00)`, color: rankBusy || loading || !games.length ? C.mut : "#1a1200", border: "none", borderRadius: 10, fontWeight: 900, padding: "10px 18px", cursor: rankBusy ? "default" : "pointer", whiteSpace: "nowrap" }}>
                   {rankBusy ? `SIMULATING ${Math.round(rankProg * games.length)}/${games.length}…` : ranks ? "RE-RUN ⟳" : "RANK ALL PLAYERS ▸"}
@@ -1919,25 +1941,92 @@ function Index() {
                     ))}
                     <div style={{ marginLeft: "auto", fontSize: 11, color: C.mut, alignSelf: "center" }}>{shownRanks.length} players · {clamp(Math.round(sims) || 1, 100, 20000).toLocaleString()} sims/game</div>
                   </div>
-                  <div style={{ marginTop: 10, maxHeight: 520, overflowY: "auto" }}>
-                    {shownRanks.map((p, i) => (
-                      <div key={p.team + p.name + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: `1px solid #14261f` }}>
-                        <span style={{ width: 26, textAlign: "right", fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.mut, fontFamily: "ui-monospace,monospace" }}>{i + 1}</span>
-                        <span style={{ width: 28, fontSize: 10, fontWeight: 800, color: p.pos === "QB" ? C.gold : p.pos === "RB" ? "#57c7ff" : p.pos === "WR" ? "#ff8ad1" : "#c6a0ff" }}>{p.depth || p.pos}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name} <span style={{ color: C.mut, fontWeight: 400, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span>{p.slot ? <span style={{ color: C.field, fontWeight: 600, fontSize: 11, marginLeft: 6 }}>{p.slot}</span> : null}</div>
-                          <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{statLine(p)}</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 16, fontWeight: 800, color: C.chalk }}>{num(p.fp)}</div>
-                          <Spread p={p} small />
-                        </div>
-                      </div>
-                    ))}
+                  <div style={{ marginTop: 10, overflowX: "auto", maxHeight: 560, overflowY: "auto" }}>
+                    <table style={{ width: "100%", minWidth: 780, borderCollapse: "collapse", fontFamily: "ui-monospace,monospace", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ position: "sticky", top: 0, background: C.panel, zIndex: 1 }}>
+                          <th style={{ ...thCell, textAlign: "right", width: 34 }}>#</th>
+                          <th style={{ ...thCell, textAlign: "left" }}>Player</th>
+                          {BOARD_COLS.map((c) => (
+                            <th key={c.k} title={c.hint} onClick={() => setSortKey(c.k)}
+                              style={{ ...thCell, textAlign: "right", cursor: "pointer", color: sortKey === c.k ? C.field : C.mut }}>
+                              {c.label}{sortKey === c.k ? " ▾" : ""}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {shownRanks.map((p, i) => (
+                          <tr key={p.key} style={{ borderBottom: "1px solid #14261f" }}>
+                            <td style={{ ...tdCell, color: C.mut }}>{i + 1}</td>
+                            <td style={{ padding: "7px 6px", textAlign: "left" }}>
+                              <div style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: posColor(p.pos), width: 28, flexShrink: 0 }}>{p.depth || p.pos}</span>
+                                <span style={{ fontWeight: 700, color: C.chalk }}>{p.name}</span>
+                                <span style={{ color: C.mut, fontSize: 11 }}>{p.team} {p.home ? "vs" : "@"} {p.opp}</span>
+                              </div>
+                            </td>
+                            {BOARD_COLS.map((c) => {
+                              const v = c.get(p);
+                              return <td key={c.k} style={{ ...tdCell, color: v == null ? "#3c5a4c" : c.k === sortKey ? C.field : C.chalk }}>{v == null ? "–" : c.fmt(v)}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </>
               )}
             </div>
+            {/* ---- LINEUPS: the joint view of the very same simulation the board above summarises ---- */}
+            {ranks && joint && !rankBusy && (
+              <div style={{ ...box, padding: 14, margin: "14px 0 4px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>Lineups</div>
+                    <div style={{ fontSize: 11, color: C.mut, marginTop: 2, maxWidth: 580 }}>
+                      Scored on the joint simulation rather than on summed projections: the eight players are added up game by simulated game, and ranked by how often they actually beat the target. Nothing here instructs stacking — raise the target and the search finds stacks by itself, because correlated players reach a big number together.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 11, color: C.mut }}>beat
+                      <input type="number" value={target || defaultTarget} onChange={(e) => setTarget(Number(e.target.value) || 0)}
+                        style={{ width: 64, marginLeft: 6, background: "#0e1c15", color: C.chalk, border: "1px solid " + C.line, borderRadius: 8, padding: "6px 8px", fontFamily: "ui-monospace,monospace" }} />
+                    </label>
+                    <button onClick={buildLineups} disabled={lineupBusy}
+                      style={{ background: lineupBusy ? "#16281f" : "linear-gradient(135deg," + C.field + ",#1d8a4e)", color: lineupBusy ? C.mut : "#04140c", border: "none", borderRadius: 10, fontWeight: 900, padding: "10px 16px", cursor: lineupBusy ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                      {lineupBusy ? "SEARCHING…" : lineups ? "REBUILD ⟳" : "BUILD LINEUPS ▸"}
+                    </button>
+                  </div>
+                </div>
+                {lineups && (
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {lineups.map((L, i) => (
+                      <div key={i} style={{ border: "1px solid " + C.line, borderRadius: 10, padding: "10px 12px", background: "#0e1c15" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "baseline", justifyContent: "space-between" }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: i === 0 ? C.gold : C.chalk }}>
+                            #{i + 1} <span style={{ color: C.field }}>{(L.stats.hit * 100).toFixed(1)}%</span>{" "}
+                            <span style={{ color: C.mut, fontWeight: 400 }}>of sims beat {target}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: C.mut, fontFamily: "ui-monospace,monospace" }}>
+                            proj {L.stats.mean.toFixed(1)} · floor {L.stats.p10.toFixed(1)} · ceil {L.stats.p90.toFixed(1)} · <span style={{ color: C.chalk }}>{L.stack}</span>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "grid", gap: 4, gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))" }}>
+                          {L.players.map((p, k) => (
+                            <div key={p.key} style={{ display: "flex", gap: 6, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", alignItems: "baseline" }}>
+                              <span style={{ color: C.mut, width: 32, flexShrink: 0, fontFamily: "ui-monospace,monospace" }}>{SLOTS[k]}</span>
+                              <span style={{ color: posColor(p.pos), fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                              <span style={{ color: C.mut, marginLeft: "auto", fontFamily: "ui-monospace,monospace" }}>{p.team}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ margin: "18px 0 10px", fontSize: 13, color: C.mut, textTransform: "uppercase", letterSpacing: 1 }}>{loading ? "Loading this week's games…" : data.week ? `Week ${data.week} Games (${games.length})` : "This Week's Games"} — tap to simulate{!loading && data.skipped ? <span style={{ textTransform: "none", letterSpacing: 0, color: "#7fa394" }}> · {data.skipped} hidden ({league === "cfb" ? "non-FBS opponent" : "no player data"})</span> : null}</div>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", opacity: loading ? 0.4 : 1 }}>
               {games.map((g, i) => (
@@ -1998,7 +2087,7 @@ function Index() {
               </div>
             )}
             <p style={{ marginTop: 22, fontSize: 11, color: C.mut, lineHeight: 1.6 }}>
-              Real Monte-Carlo model: each sim runs team pace → play volume → per-player usage → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored PPR and averaged over your N sims. Every RUN reseeds, so results carry real sampling variation and converge as N grows — never a canned answer. {data.source === "espn" ? `This week's real ${league === "cfb" ? "NCAA" : "NFL"} slate is pulled live from ESPN; player usage is the real 2025-season baseline${league === "nfl" ? ". Add a proxy via ⚙ for live season-to-date usage." : " for all FBS teams."}` : data.source === "curated" ? "Live slate unavailable — showing no games; try again shortly." : `This week's slate + live per-player usage (${srcLabel.replace("live · ", "")}).`}
+              Correlated Monte-Carlo model: each sim draws one shared game environment → team volume → each player's SHARE of it → matchup-adjusted efficiency (offense vs the opponent's pass/run D) → WR1 vs the opponent's top CB → home-field → Gaussian yards / Poisson TDs / Binomial catches, scored to DraftKings. The quarterback's completions, yards and TDs are aggregated from what his receivers actually did rather than drawn separately, so a QB and his WR1 correlate at about +0.6 — which is what makes a stack mean anything. Early-season rates are regressed toward a positional prior, hardest on touchdowns, so a two-game hot streak isn't projected forward forever. Every RUN reseeds, so results carry real sampling variation and converge as N grows — never a canned answer. {data.source === "espn" ? `This week's real ${league === "cfb" ? "NCAA" : "NFL"} slate is pulled live from ESPN; player usage is the real 2025-season baseline${league === "nfl" ? ". Add a proxy via ⚙ for live season-to-date usage." : " for all FBS teams."}` : data.source === "curated" ? "Live slate unavailable — showing no games; try again shortly." : `This week's slate + live per-player usage (${srcLabel.replace("live · ", "")}).`}
             </p>
           </>
         ) : (
